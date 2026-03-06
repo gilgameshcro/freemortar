@@ -568,13 +568,17 @@ export class Game {
     private finishRound(winnerId: string | null) {
         this.state.winnerId = winnerId;
         this.state.phase = 'game_over';
-        if (winnerId) {
-            const campaign = this.campaignById.get(winnerId);
-            if (campaign) {
+
+        const placements = this.buildPlacementOrder(winnerId);
+        placements.forEach((playerId, index) => {
+            const campaign = this.campaignById.get(playerId);
+            if (!campaign) return;
+            if (index === 0 && winnerId) {
                 campaign.roundWins += 1;
-                campaign.score += 100;
             }
-        }
+            campaign.score += this.calculatePlacementScore(index);
+        });
+
         this.emitTurnState();
         this.emitRoundEndOnce();
     }
@@ -681,21 +685,24 @@ export class Game {
             const targetCampaign = this.campaignById.get(tank.id);
             if (targetCampaign) targetCampaign.totalDamageTaken += actualDamage;
 
-            const shooterRoundStats = this.roundStatsById.get(ownerId);
-            if (shooterRoundStats) {
-                shooterRoundStats.damage += actualDamage;
-                shooterRoundStats.hits += 1;
-                if (previousHealth > 0 && tank.health === 0) shooterRoundStats.kills += 1;
-            }
+            const isSelfHit = tank.id === ownerId;
+            if (!isSelfHit) {
+                const shooterRoundStats = this.roundStatsById.get(ownerId);
+                if (shooterRoundStats) {
+                    shooterRoundStats.damage += actualDamage;
+                    shooterRoundStats.hits += 1;
+                    if (previousHealth > 0 && tank.health === 0) shooterRoundStats.kills += 1;
+                }
 
-            const shooterCampaign = this.campaignById.get(ownerId);
-            if (shooterCampaign) {
-                shooterCampaign.totalDamage += actualDamage;
-                shooterCampaign.totalHits += 1;
-                shooterCampaign.score += this.calculateScoreDelta(actualDamage, false);
-                if (previousHealth > 0 && tank.health === 0) {
-                    shooterCampaign.totalKills += 1;
-                    shooterCampaign.score += this.calculateScoreDelta(0, true);
+                const shooterCampaign = this.campaignById.get(ownerId);
+                if (shooterCampaign) {
+                    shooterCampaign.totalDamage += actualDamage;
+                    shooterCampaign.totalHits += 1;
+                    shooterCampaign.score += this.calculateScoreDelta(actualDamage, false);
+                    if (previousHealth > 0 && tank.health === 0) {
+                        shooterCampaign.totalKills += 1;
+                        shooterCampaign.score += this.calculateScoreDelta(0, true);
+                    }
                 }
             }
 
@@ -716,14 +723,35 @@ export class Game {
     }
 
     private calculateScoreDelta(damage: number, killed: boolean) {
-        switch (this.settings.scoringMode) {
-            case 'damage_only':
-                return damage;
-            case 'kills_only':
-                return killed ? 1 : 0;
-            default:
-                return damage + (killed ? 50 : 0);
+        let delta = 0;
+        if (this.settings.scoring.awardDamage) {
+            delta += damage * this.settings.scoring.damagePointValue;
         }
+        if (killed && this.settings.scoring.awardKills) {
+            delta += this.settings.scoring.killPointValue;
+        }
+        return delta;
+    }
+
+    private calculatePlacementScore(placementIndex: number) {
+        if (!this.settings.scoring.awardPlacement) return 0;
+        if (placementIndex === 0) return this.settings.scoring.firstPlacePoints;
+        if (placementIndex === 1) return this.settings.scoring.secondPlacePoints;
+        return 0;
+    }
+
+    private buildPlacementOrder(winnerId: string | null) {
+        const ranked = this.players.slice().sort((left, right) => {
+            if (winnerId && left.id === winnerId) return -1;
+            if (winnerId && right.id === winnerId) return 1;
+            const leftRound = this.roundStatsById.get(left.id) ?? this.createRoundStats();
+            const rightRound = this.roundStatsById.get(right.id) ?? this.createRoundStats();
+            return rightRound.damage - leftRound.damage
+                || rightRound.kills - leftRound.kills
+                || right.health - left.health
+                || rightRound.hits - leftRound.hits;
+        });
+        return ranked.map((player) => player.id);
     }
 
     private spawnDamagePopups(damageEvents: DamageEvent[]) {
@@ -1191,6 +1219,9 @@ export class Game {
         return `rgba(${(bigint >> 16) & 255}, ${(bigint >> 8) & 255}, ${bigint & 255}, ${alpha})`;
     }
 }
+
+
+
 
 
 

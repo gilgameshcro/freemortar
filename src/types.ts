@@ -6,7 +6,15 @@ export type WindMode = 'variable' | 'constant' | 'disabled';
 
 export type PowerRule = 'static' | 'health_linked';
 
-export type ScoringMode = 'damage_and_kills' | 'damage_only' | 'kills_only';
+export interface ScoringSettings {
+    awardDamage: boolean;
+    damagePointValue: number;
+    awardKills: boolean;
+    killPointValue: number;
+    awardPlacement: boolean;
+    firstPlacePoints: number;
+    secondPlacePoints: number;
+}
 
 export interface MatchSettings {
     windMode: WindMode;
@@ -14,7 +22,8 @@ export interface MatchSettings {
     terrainCollapse: boolean;
     powerRule: PowerRule;
     rounds: number;
-    scoringMode: ScoringMode;
+    scoring: ScoringSettings;
+    weaponCostMultiplier: number;
 }
 
 export interface LobbyPlayer {

@@ -4,13 +4,15 @@ import {
     addWeaponAmmo,
     COLOR_OPTIONS,
     createWeaponsForLoadout,
+    getWeaponSellPrice,
+    getWeaponShopPrice,
     LOADOUTS,
     LOGICAL_HEIGHT,
     LOGICAL_WIDTH,
     MAX_PLAYERS,
+    removeWeaponAmmo,
     ROUND_SHOP_BASE_CREDITS,
-    WEAPON_DEFINITIONS,
-    WEAPON_SHOP_PRICES
+    WEAPON_DEFINITIONS
 } from './config';
 import { Game, type HudSnapshot, type RoundSummary } from './Game';
 import { Network } from './Network';
@@ -23,7 +25,7 @@ import type {
     PlayerSetup,
     PlayerStatsSnapshot,
     PowerRule,
-    ScoringMode,
+    ScoringSettings,
     WeaponState,
     WeaponType,
     WindMode
@@ -47,13 +49,24 @@ type CampaignPlayer = {
     stats: PlayerStatsSnapshot;
 };
 
+const DEFAULT_SCORING: ScoringSettings = {
+    awardDamage: true,
+    damagePointValue: 1,
+    awardKills: true,
+    killPointValue: 50,
+    awardPlacement: true,
+    firstPlacePoints: 1000,
+    secondPlacePoints: 50
+};
+
 const DEFAULT_SETTINGS: MatchSettings = {
     windMode: 'variable',
     maxWind: 0.45,
     terrainCollapse: true,
     powerRule: 'health_linked',
     rounds: 1,
-    scoringMode: 'damage_and_kills'
+    scoring: { ...DEFAULT_SCORING },
+    weaponCostMultiplier: 1
 };
 
 const app = document.getElementById('app');
@@ -66,7 +79,7 @@ app.innerHTML = `
                 <div>
                     <p class="eyebrow">FREE MORTAR // TACTICAL PIXEL DUEL</p>
                     <h1>FreeMortar</h1>
-                    <p class="hero-copy">Destructible terrain, local or PeerJS multiplayer, campaign rounds, carry-over arsenals, and chunky placeholder synth audio.</p>
+                    <p class="hero-copy">Destructible terrain, local or online multiplayer, campaign rounds, carry-over arsenals, and chunky placeholder synth audio.</p>
                 </div>
                 <div class="audio-controls">
                     <button id="btnMuteMenu" class="pixel-button ghost">Audio On</button>
@@ -126,17 +139,30 @@ app.innerHTML = `
                         <option value="0.7">High</option>
                     </select>
                     <label class="field-label" for="roundCount">Rounds</label>
-                    <select id="roundCount" class="pixel-select">
-                        <option value="1">Single Battle</option>
-                        <option value="3">3-Round Campaign</option>
-                        <option value="5">5-Round Campaign</option>
-                    </select>
-                    <label class="field-label" for="scoringMode">Scoring</label>
-                    <select id="scoringMode" class="pixel-select">
-                        <option value="damage_and_kills">Damage + 50 per Kill</option>
-                        <option value="damage_only">Damage Only</option>
-                        <option value="kills_only">Kills Only</option>
-                    </select>
+                    <input id="roundCount" class="pixel-input" type="number" min="1" max="99" step="1" value="1" />
+                    <label class="field-label" for="weaponCostMultiplier">Weapon Cost Multiplier</label>
+                    <input id="weaponCostMultiplier" class="pixel-input" type="number" min="0.25" max="5" step="0.25" value="1" />
+                    <div class="scoring-panel">
+                        <div class="scoring-head">
+                            <label class="field-label">Scoring Rules</label>
+                            <p class="field-help compact-help">Toggle each scoring source and tune its value directly.</p>
+                        </div>
+                        <label class="rule-row" for="scoringDamageToggle">
+                            <span class="rule-toggle"><input id="scoringDamageToggle" type="checkbox" checked /> Damage</span>
+                            <span class="rule-value"><input id="scoringDamageValue" class="pixel-input compact-input" type="number" min="0" max="20" step="1" value="1" /> per damage</span>
+                        </label>
+                        <label class="rule-row" for="scoringKillsToggle">
+                            <span class="rule-toggle"><input id="scoringKillsToggle" type="checkbox" checked /> Kills</span>
+                            <span class="rule-value"><input id="scoringKillValue" class="pixel-input compact-input" type="number" min="0" max="5000" step="10" value="50" /> per kill</span>
+                        </label>
+                        <label class="rule-row" for="scoringPlacementToggle">
+                            <span class="rule-toggle"><input id="scoringPlacementToggle" type="checkbox" checked /> Placement</span>
+                            <span class="rule-value dual-values">
+                                <input id="scoringFirstValue" class="pixel-input compact-input" type="number" min="0" max="10000" step="10" value="1000" /> first
+                                <input id="scoringSecondValue" class="pixel-input compact-input" type="number" min="0" max="10000" step="10" value="50" /> second
+                            </span>
+                        </label>
+                    </div>
                     <label class="toggle-row" for="terrainCollapse">
                         <input id="terrainCollapse" type="checkbox" checked />
                         <span>Terrain Collapse</span>
@@ -277,8 +303,15 @@ const loadoutDescription = mustElement<HTMLElement>('loadoutDescription');
 const powerRuleSelect = mustElement<HTMLSelectElement>('powerRule');
 const windModeSelect = mustElement<HTMLSelectElement>('windMode');
 const windMaxSelect = mustElement<HTMLSelectElement>('windMax');
-const roundCountSelect = mustElement<HTMLSelectElement>('roundCount');
-const scoringModeSelect = mustElement<HTMLSelectElement>('scoringMode');
+const roundCountInput = mustElement<HTMLInputElement>('roundCount');
+const weaponCostMultiplierInput = mustElement<HTMLInputElement>('weaponCostMultiplier');
+const scoringDamageToggle = mustElement<HTMLInputElement>('scoringDamageToggle');
+const scoringDamageValue = mustElement<HTMLInputElement>('scoringDamageValue');
+const scoringKillsToggle = mustElement<HTMLInputElement>('scoringKillsToggle');
+const scoringKillValue = mustElement<HTMLInputElement>('scoringKillValue');
+const scoringPlacementToggle = mustElement<HTMLInputElement>('scoringPlacementToggle');
+const scoringFirstValue = mustElement<HTMLInputElement>('scoringFirstValue');
+const scoringSecondValue = mustElement<HTMLInputElement>('scoringSecondValue');
 const terrainCollapseInput = mustElement<HTMLInputElement>('terrainCollapse');
 const volumeRangeMenu = mustElement<HTMLInputElement>('volumeRangeMenu');
 const volumeRangeGame = mustElement<HTMLInputElement>('volumeRangeGame');
@@ -325,7 +358,7 @@ let localLobbyPlayers: LobbyPlayer[] = [];
 let network: Network | null = null;
 let game: Game | null = null;
 let campaignPlayers: CampaignPlayer[] = [];
-let currentSettings: MatchSettings = { ...DEFAULT_SETTINGS };
+let currentSettings: MatchSettings = { ...DEFAULT_SETTINGS, scoring: { ...DEFAULT_SETTINGS.scoring } };
 let currentRound = 1;
 let intermissionStage: IntermissionStage = 'hidden';
 let latestRoundSummary: RoundSummary | null = null;
@@ -339,8 +372,15 @@ roomCodeInput.value = '';
 powerRuleSelect.value = DEFAULT_SETTINGS.powerRule;
 windModeSelect.value = DEFAULT_SETTINGS.windMode;
 windMaxSelect.value = `${DEFAULT_SETTINGS.maxWind}`;
-roundCountSelect.value = `${DEFAULT_SETTINGS.rounds}`;
-scoringModeSelect.value = DEFAULT_SETTINGS.scoringMode;
+roundCountInput.value = `${DEFAULT_SETTINGS.rounds}`;
+weaponCostMultiplierInput.value = `${DEFAULT_SETTINGS.weaponCostMultiplier}`;
+scoringDamageToggle.checked = DEFAULT_SETTINGS.scoring.awardDamage;
+scoringDamageValue.value = `${DEFAULT_SETTINGS.scoring.damagePointValue}`;
+scoringKillsToggle.checked = DEFAULT_SETTINGS.scoring.awardKills;
+scoringKillValue.value = `${DEFAULT_SETTINGS.scoring.killPointValue}`;
+scoringPlacementToggle.checked = DEFAULT_SETTINGS.scoring.awardPlacement;
+scoringFirstValue.value = `${DEFAULT_SETTINGS.scoring.firstPlacePoints}`;
+scoringSecondValue.value = `${DEFAULT_SETTINGS.scoring.secondPlacePoints}`;
 terrainCollapseInput.checked = DEFAULT_SETTINGS.terrainCollapse;
 volumeRangeMenu.value = `${Math.round(audio.currentVolume * 100)}`;
 volumeRangeGame.value = volumeRangeMenu.value;
@@ -394,6 +434,11 @@ btnMuteMenu.addEventListener('click', async () => { await audio.unlock(); audio.
 btnMuteGame.addEventListener('click', async () => { await audio.unlock(); audio.setMuted(!audio.muted); updateAudioControls(); });
 btnMusicMenu.addEventListener('click', async () => { await audio.unlock(); audio.setMusicMuted(!audio.musicOnlyMuted); updateAudioControls(); });
 btnMusicGame.addEventListener('click', async () => { await audio.unlock(); audio.setMusicMuted(!audio.musicOnlyMuted); updateAudioControls(); });
+[scoringDamageToggle, scoringKillsToggle, scoringPlacementToggle].forEach((input) => {
+    input.addEventListener('change', () => {
+        syncMatchSettingsAvailability();
+    });
+});
 
 btnHost.addEventListener('click', async () => {
     await audio.unlock();
@@ -510,8 +555,21 @@ function readMatchSettingsForm(): MatchSettings {
         maxWind: Number(windMaxSelect.value),
         terrainCollapse: terrainCollapseInput.checked,
         powerRule: powerRuleSelect.value as PowerRule,
-        rounds: Number(roundCountSelect.value),
-        scoringMode: scoringModeSelect.value as ScoringMode
+        rounds: clampSetting(Number(roundCountInput.value), 1, 99, DEFAULT_SETTINGS.rounds),
+        scoring: readScoringSettingsForm(),
+        weaponCostMultiplier: clampSetting(Number(weaponCostMultiplierInput.value), 0.25, 5, DEFAULT_SETTINGS.weaponCostMultiplier)
+    };
+}
+
+function readScoringSettingsForm(): ScoringSettings {
+    return {
+        awardDamage: scoringDamageToggle.checked,
+        damagePointValue: clampSetting(Number(scoringDamageValue.value), 0, 20, DEFAULT_SCORING.damagePointValue),
+        awardKills: scoringKillsToggle.checked,
+        killPointValue: clampSetting(Number(scoringKillValue.value), 0, 5000, DEFAULT_SCORING.killPointValue),
+        awardPlacement: scoringPlacementToggle.checked,
+        firstPlacePoints: clampSetting(Number(scoringFirstValue.value), 0, 10000, DEFAULT_SCORING.firstPlacePoints),
+        secondPlacePoints: clampSetting(Number(scoringSecondValue.value), 0, 10000, DEFAULT_SCORING.secondPlacePoints)
     };
 }
 
@@ -873,6 +931,13 @@ function handleIntermissionClick(event: MouseEvent) {
         purchaseWeapon(playerId, weaponType);
         return;
     }
+    if (action === 'sell') {
+        const playerId = button.dataset.playerId;
+        const weaponType = button.dataset.weapon as WeaponType | undefined;
+        if (!playerId || !weaponType) return;
+        sellWeapon(playerId, weaponType);
+        return;
+    }
     if (action === 'toggle-shop-ready') {
         const playerId = button.dataset.playerId;
         if (!playerId) return;
@@ -881,7 +946,7 @@ function handleIntermissionClick(event: MouseEvent) {
 }
 
 function purchaseWeapon(playerId: string, weaponType: WeaponType) {
-    const price = WEAPON_SHOP_PRICES[weaponType];
+    const price = getWeaponShopPrice(weaponType, currentSettings.weaponCostMultiplier);
     if (price === null) return;
     const localIds = getInteractivePlayerIds();
     if (!localIds.has(playerId)) return;
@@ -892,6 +957,26 @@ function purchaseWeapon(playerId: string, weaponType: WeaponType) {
             ...player,
             credits: player.credits - price,
             weapons: addWeaponAmmo(player.weapons, weaponType, 1)
+        };
+    });
+    renderIntermission();
+    syncShopState(playerId);
+}
+
+function sellWeapon(playerId: string, weaponType: WeaponType) {
+    const price = getWeaponSellPrice(weaponType, currentSettings.weaponCostMultiplier);
+    if (price === null) return;
+    const localIds = getInteractivePlayerIds();
+    if (!localIds.has(playerId)) return;
+
+    campaignPlayers = campaignPlayers.map((player) => {
+        if (player.id !== playerId || player.shopReady) return player;
+        const owned = player.weapons.find((weapon) => weapon.type === weaponType);
+        if (!owned || owned.ammo <= 0) return player;
+        return {
+            ...player,
+            credits: player.credits + price,
+            weapons: removeWeaponAmmo(player.weapons, weaponType, 1)
         };
     });
     renderIntermission();
@@ -1052,45 +1137,134 @@ function renderStatsScreen() {
 
 function renderShopScreen() {
     const localIds = getInteractivePlayerIds();
+    const visiblePlayers = campaignPlayers.filter((player) => localIds.has(player.id));
+    const remotePlayers = campaignPlayers.filter((player) => !localIds.has(player.id));
+    const showRemoteRoster = Boolean(network && remotePlayers.length);
+
     intermissionScreen.innerHTML = `
         <div class="intermission-card shop-card deluxe-shop-card">
-            <div>
-                <p class="eyebrow">SHOP + REARM</p>
-                <h2>Carry-Over Arsenal</h2>
-                <p class="hero-copy">Weapons carry over. Each pilot receives current points plus ${ROUND_SHOP_BASE_CREDITS} credits after the round. Buy carefully, then mark ready.</p>
+            <div class="shop-hero-panel">
+                <div>
+                    <p class="eyebrow">SHOP + REARM</p>
+                    <h2>Carry-Over Arsenal</h2>
+                    <p class="hero-copy">Weapons carry over. Each pilot receives current points plus ${ROUND_SHOP_BASE_CREDITS} credits after the round. Self-damage never scores, and market prices follow the battle multiplier.</p>
+                </div>
+                <div class="shop-rule-strip">
+                    <span>Cost x${currentSettings.weaponCostMultiplier.toFixed(2)}</span>
+                    <span>${currentSettings.scoring.awardDamage ? `${currentSettings.scoring.damagePointValue} per damage` : 'No damage score'}</span>
+                    <span>${currentSettings.scoring.awardKills ? `${currentSettings.scoring.killPointValue} per kill` : 'No kill bonus'}</span>
+                </div>
             </div>
-            <div class="shop-grid deluxe-shop-grid">
-                ${campaignPlayers.map((player) => {
-                    const interactive = localIds.has(player.id);
-                    return `
-                        <article class="shop-pilot deluxe-shop-pilot" style="--accent:${player.color}">
-                            <div class="shop-head">
-                                <div>
-                                    <p class="eyebrow">Pilot Market</p>
-                                    <h3>${escapeHtml(player.name)}</h3>
-                                </div>
-                                <span class="shop-credits">${player.credits} cr</span>
-                            </div>
-                            <div class="weapon-list weapon-stock-list">
-                                ${player.weapons.map((weapon) => buildWeaponInventoryRow(weapon.type, weapon.ammo)).join('')}
-                            </div>
-                            <div class="store-list deluxe-store-list">
-                                ${SHOP_WEAPON_ORDER.map((type) => `
-                                    <button class="store-item ${interactive ? '' : 'disabled'}" data-action="buy" data-player-id="${player.id}" data-weapon="${type}" ${!interactive || player.shopReady || player.credits < (WEAPON_SHOP_PRICES[type] ?? 9999) ? 'disabled' : ''}>
-                                        <span class="store-copy">
-                                            <strong>${WEAPON_DEFINITIONS[type].glyph} ${WEAPON_DEFINITIONS[type].name}</strong>
-                                            <small>${WEAPON_DEFINITIONS[type].flavor}</small>
-                                        </span>
-                                        <strong>${WEAPON_SHOP_PRICES[type]} cr</strong>
-                                    </button>
+            <div class="shop-layout ${network ? 'online-shop-layout' : 'local-shop-layout'}">
+                <div class="shop-focus-column ${network ? 'solo-focus-column' : 'grid-focus-column'}">
+                    ${visiblePlayers.map((player) => buildShopPlayerPanel(player, true, !network)).join('')}
+                </div>
+                ${showRemoteRoster ? `
+                    <aside class="shop-side-column">
+                        <section class="shop-roster-panel">
+                            <p class="eyebrow">Remote Pilots</p>
+                            <h3>Readiness Board</h3>
+                            <div class="shop-roster-list">
+                                ${campaignPlayers.map((player) => `
+                                    <article class="shop-roster-card ${player.shopReady ? 'ready' : ''}" style="--accent:${player.color}">
+                                        <div>
+                                            <strong>${escapeHtml(player.name)}</strong>
+                                            <span>${player.credits} cr</span>
+                                        </div>
+                                        <span>${player.shopReady ? 'READY' : 'SHOPPING'}</span>
+                                    </article>
                                 `).join('')}
                             </div>
-                            <button class="pixel-button ${player.shopReady ? 'secondary' : 'primary'}" data-action="toggle-shop-ready" data-player-id="${player.id}" ${!interactive ? 'disabled' : ''}>${player.shopReady ? 'Ready' : 'Ready Up'}</button>
-                        </article>
-                    `;
-                }).join('')}
+                        </section>
+                        ${remotePlayers.map((player) => `
+                            <article class="shop-summary-card" style="--accent:${player.color}">
+                                <div class="shop-summary-head">
+                                    <strong>${escapeHtml(player.name)}</strong>
+                                    <span>${player.credits} cr</span>
+                                </div>
+                                <div class="weapon-summary-line">
+                                    ${player.weapons.filter((weapon) => weapon.ammo !== 0 || weapon.type === 'cannon').map((weapon) => `<span>${WEAPON_DEFINITIONS[weapon.type].glyph} ${weapon.ammo < 0 ? 'INF' : weapon.ammo}</span>`).join('')}
+                                </div>
+                            </article>
+                        `).join('')}
+                    </aside>
+                ` : ''}
             </div>
         </div>
+    `;
+}
+
+function buildShopPlayerPanel(player: CampaignPlayer, interactive: boolean, localLayout: boolean) {
+    return `
+        <article class="shop-pilot deluxe-shop-pilot featured-shop-pilot ${localLayout ? 'local-shop-pilot' : 'online-shop-pilot'}" style="--accent:${player.color}">
+            <div class="shop-head">
+                <div>
+                    <p class="eyebrow">Pilot Market</p>
+                    <h3>${escapeHtml(player.name)}</h3>
+                </div>
+                <div class="shop-head-meta">
+                    <span class="shop-credits">${player.credits} cr</span>
+                    <span class="shop-state ${player.shopReady ? 'ready' : ''}">${player.shopReady ? 'Ready' : 'Shopping'}</span>
+                </div>
+            </div>
+            <div class="shop-columns">
+                <section class="shop-column inventory-column">
+                    <div class="column-head">
+                        <p class="eyebrow">Stock</p>
+                        <span>Sell reserves</span>
+                    </div>
+                    <div class="weapon-list weapon-stock-list roomy-weapon-list">
+                        ${player.weapons.filter((weapon) => weapon.ammo !== 0 || weapon.type === 'cannon').map((weapon) => buildWeaponInventoryRow(player.id, weapon.type, weapon.ammo, interactive, player.shopReady)).join('')}
+                    </div>
+                </section>
+                <section class="shop-column market-column">
+                    <div class="column-head">
+                        <p class="eyebrow">Market</p>
+                        <span>Buy single warheads</span>
+                    </div>
+                    <div class="store-list deluxe-store-list roomy-store-list">
+                        ${SHOP_WEAPON_ORDER.map((type) => buildShopMarketRow(player, type, interactive)).join('')}
+                    </div>
+                </section>
+            </div>
+            <button class="pixel-button ${player.shopReady ? 'secondary' : 'primary'}" data-action="toggle-shop-ready" data-player-id="${player.id}" ${!interactive ? 'disabled' : ''}>${player.shopReady ? 'Ready' : 'Ready Up'}</button>
+        </article>
+    `;
+}
+
+function buildWeaponInventoryRow(playerId: string, type: WeaponType, ammo: number, interactive: boolean, shopReady: boolean) {
+    const definition = WEAPON_DEFINITIONS[type];
+    const sellPrice = getWeaponSellPrice(type, currentSettings.weaponCostMultiplier);
+    const canSell = interactive && !shopReady && ammo > 0 && sellPrice !== null;
+    return `
+        <div class="weapon-chip fancy-weapon-chip weapon-stock-row ${canSell ? 'sellable' : ''}">
+            <span class="weapon-copy">
+                <strong>${definition.glyph} ${definition.name}</strong>
+                <small>${definition.flavor}</small>
+            </span>
+            <div class="weapon-stock-actions">
+                <strong>${ammo < 0 ? 'INF' : ammo}</strong>
+                ${canSell ? `<button class="mini-shop-button" data-action="sell" data-player-id="${playerId}" data-weapon="${type}">Sell +${sellPrice}</button>` : ''}
+            </div>
+        </div>
+    `;
+}
+
+function buildShopMarketRow(player: CampaignPlayer, type: WeaponType, interactive: boolean) {
+    const definition = WEAPON_DEFINITIONS[type];
+    const price = getWeaponShopPrice(type, currentSettings.weaponCostMultiplier);
+    const disabled = !interactive || player.shopReady || price === null || player.credits < price;
+    return `
+        <button class="store-item deluxe-store-item ${disabled ? 'disabled' : ''}" data-action="buy" data-player-id="${player.id}" data-weapon="${type}" ${disabled ? 'disabled' : ''}>
+            <span class="store-copy">
+                <strong>${definition.glyph} ${definition.name}</strong>
+                <small>${definition.flavor}</small>
+            </span>
+            <span class="store-meta">
+                <strong>${price ?? 'LOCK'}</strong>
+                <small>${price === null ? 'Loadout only' : 'buy 1'}</small>
+            </span>
+        </button>
     `;
 }
 
@@ -1118,19 +1292,6 @@ function buildStatMeter(label: string, value: number, maxValue: number, color: s
                 <strong style="color:${color}">${valueLabel}</strong>
             </div>
             <div class="stat-meter-track"><span style="width:${percent}%; background:${color}"></span></div>
-        </div>
-    `;
-}
-
-function buildWeaponInventoryRow(type: WeaponType, ammo: number) {
-    const definition = WEAPON_DEFINITIONS[type];
-    return `
-        <div class="weapon-chip fancy-weapon-chip">
-            <span class="weapon-copy">
-                <strong>${definition.glyph} ${definition.name}</strong>
-                <small>${definition.flavor}</small>
-            </span>
-            <strong>${ammo < 0 ? 'INF' : ammo}</strong>
         </div>
     `;
 }
@@ -1185,8 +1346,15 @@ function syncMatchSettingsAvailability() {
     powerRuleSelect.disabled = disableSettings;
     windModeSelect.disabled = disableSettings;
     windMaxSelect.disabled = disableSettings;
-    roundCountSelect.disabled = disableSettings;
-    scoringModeSelect.disabled = disableSettings;
+    roundCountInput.disabled = disableSettings;
+    weaponCostMultiplierInput.disabled = disableSettings;
+    scoringDamageToggle.disabled = disableSettings;
+    scoringDamageValue.disabled = disableSettings || !scoringDamageToggle.checked;
+    scoringKillsToggle.disabled = disableSettings;
+    scoringKillValue.disabled = disableSettings || !scoringKillsToggle.checked;
+    scoringPlacementToggle.disabled = disableSettings;
+    scoringFirstValue.disabled = disableSettings || !scoringPlacementToggle.checked;
+    scoringSecondValue.disabled = disableSettings || !scoringPlacementToggle.checked;
     terrainCollapseInput.disabled = disableSettings;
 }
 
@@ -1320,6 +1488,11 @@ function createEmptyStats(id: string): PlayerStatsSnapshot {
     };
 }
 
+function clampSetting(value: number, min: number, max: number, fallback: number) {
+    if (!Number.isFinite(value)) return fallback;
+    return Math.max(min, Math.min(max, value));
+}
+
 function escapeHtml(value: string) {
     return value.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;').replaceAll("'", '&#39;');
 }
@@ -1327,6 +1500,13 @@ function escapeHtml(value: string) {
 function escapeAttribute(value: string) {
     return escapeHtml(value);
 }
+
+
+
+
+
+
+
 
 
 

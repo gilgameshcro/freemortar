@@ -9,6 +9,7 @@ export const STATIC_MAX_POWER = 160;
 export const HEALTH_LINKED_POWER_FACTOR = 2;
 export const STARTING_POWER = 96;
 export const ROUND_SHOP_BASE_CREDITS = 100;
+export const WEAPON_SELLBACK_RATIO = 0.6;
 
 export const COLOR_OPTIONS = [
     '#ff7a59',
@@ -170,6 +171,27 @@ export function addWeaponAmmo(weapons: WeaponState[], type: WeaponType, amount =
     }
     next.push({ type, ammo: amount });
     return next;
+}
+
+export function removeWeaponAmmo(weapons: WeaponState[], type: WeaponType, amount = 1): WeaponState[] {
+    return cloneWeapons(weapons)
+        .map((weapon) => {
+            if (weapon.type !== type || weapon.ammo < 0) return weapon;
+            return { ...weapon, ammo: Math.max(0, weapon.ammo - amount) };
+        })
+        .filter((weapon) => weapon.ammo !== 0 || weapon.type === 'cannon');
+}
+
+export function getWeaponShopPrice(type: WeaponType, multiplier = 1): number | null {
+    const basePrice = WEAPON_SHOP_PRICES[type];
+    if (basePrice === null) return null;
+    return Math.max(1, Math.round(basePrice * multiplier));
+}
+
+export function getWeaponSellPrice(type: WeaponType, multiplier = 1): number | null {
+    const buyPrice = getWeaponShopPrice(type, multiplier);
+    if (buyPrice === null) return null;
+    return Math.max(1, Math.round(buyPrice * WEAPON_SELLBACK_RATIO));
 }
 
 export function getMaxPowerForHealth(health: number, powerRule: PowerRule): number {
