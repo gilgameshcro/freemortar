@@ -16,6 +16,8 @@ type HostEnvelope =
 
 export type NetworkRole = 'host' | 'client' | 'offline';
 
+const JOIN_TIMEOUT_MS = 12000;
+
 export class Network {
     private peer: Peer | null = null;
     private readonly connections = new Map<string, DataConnection>();
@@ -38,9 +40,10 @@ export class Network {
         this.hostPlayers = [{ id: this.myId, ...player, ready: false, isHost: true }];
 
         return new Promise((resolve, reject) => {
-            this.peer = new Peer(`freemortar-${this.roomCode}`);
+            this.peer = new Peer(`freemortar-${this.roomCode}`, buildPeerOptions());
             this.peer.on('open', () => {
                 this.emitLobbyState();
+                this.emitStatus(`Room ${this.roomCode} is online.`);
                 resolve(this.roomCode);
             });
 
@@ -60,6 +63,10 @@ export class Network {
                     this.emitLobbyState();
                     this.emitStatus('A pilot disconnected from the lobby.');
                 });
+
+                connection.on('error', (error) => {
+                    this.emitStatus(`Connection error: ${readErrorMessage(error)}`);
+                });
             });
 
             this.peer.on('error', (error) => {
@@ -74,20 +81,40 @@ export class Network {
         this.roomCode = roomCode.trim().toUpperCase();
 
         return new Promise((resolve, reject) => {
-            this.peer = new Peer();
+            let settled = false;
+            let timeoutId: number | null = null;
+
+            const finalize = (callback: () => void) => {
+                if (settled) return;
+                settled = true;
+                if (timeoutId !== null) {
+                    window.clearTimeout(timeoutId);
+                }
+                callback();
+            };
+
+            this.peer = new Peer(buildPeerOptions());
             this.peer.on('open', (id) => {
                 this.myId = id;
-                const connection = this.peer?.connect(`freemortar-${this.roomCode}`);
+                this.emitStatus(`Connecting to room ${this.roomCode}...`);
+                const connection = this.peer?.connect(`freemortar-${this.roomCode}`, { reliable: true });
                 if (!connection) {
-                    reject(new Error('Unable to create connection'));
+                    finalize(() => reject(new Error('Unable to create connection.')));
                     return;
                 }
+
+                timeoutId = window.setTimeout(() => {
+                    connection.close();
+                    this.destroy();
+                    finalize(() => reject(new Error('Timed out reaching the host. This usually means NAT/firewall traversal failed or the room code is wrong.')));
+                }, JOIN_TIMEOUT_MS);
 
                 connection.on('open', () => {
                     this.connections.set(connection.peer, connection);
                     const joinEnvelope: ClientEnvelope = { kind: 'JOIN', player };
                     connection.send(joinEnvelope);
-                    resolve();
+                    this.emitStatus(`Connected to room ${this.roomCode}.`);
+                    finalize(() => resolve());
                 });
 
                 connection.on('data', (payload) => {
@@ -96,22 +123,28 @@ export class Network {
 
                 connection.on('close', () => {
                     this.emitStatus('Disconnected from host.');
+                    if (!settled) {
+                        this.destroy();
+                        finalize(() => reject(new Error('The host connection closed before the lobby opened.')));
+                    }
                 });
 
                 connection.on('error', (error) => {
-                    reject(error);
+                    this.destroy();
+                    finalize(() => reject(new Error(readErrorMessage(error))));
                 });
             });
 
             this.peer.on('error', (error) => {
-                reject(error);
+                this.destroy();
+                finalize(() => reject(new Error(readErrorMessage(error))));
             });
         });
     }
 
     public updateLocalPlayer(patch: EditableLobbyFields) {
         if (this.role === 'host') {
-            const local = this.hostPlayers.find((player) => player.id === this.myId);
+            const local = this.hostPlayers.find((playerEntry) => playerEntry.id === this.myId);
             if (local) {
                 local.name = patch.name;
                 local.color = patch.color;
@@ -127,7 +160,7 @@ export class Network {
 
     public setReady(ready: boolean) {
         if (this.role === 'host') {
-            const local = this.hostPlayers.find((player) => player.id === this.myId);
+            const local = this.hostPlayers.find((playerEntry) => playerEntry.id === this.myId);
             if (local) {
                 local.ready = ready;
                 this.emitLobbyState();
@@ -170,7 +203,7 @@ export class Network {
     private handleHostEnvelope(senderId: string, envelope: ClientEnvelope) {
         switch (envelope.kind) {
             case 'JOIN': {
-                const existing = this.hostPlayers.find((player) => player.id === senderId);
+                const existing = this.hostPlayers.find((playerEntry) => playerEntry.id === senderId);
                 if (existing) {
                     existing.name = envelope.player.name;
                     existing.color = envelope.player.color;
@@ -190,19 +223,19 @@ export class Network {
                 break;
             }
             case 'PLAYER_UPDATE': {
-                const player = this.hostPlayers.find((entry) => entry.id === senderId);
-                if (!player) return;
-                player.name = envelope.patch.name;
-                player.color = envelope.patch.color;
-                player.loadout = envelope.patch.loadout;
-                player.ready = false;
+                const playerEntry = this.hostPlayers.find((entry) => entry.id === senderId);
+                if (!playerEntry) return;
+                playerEntry.name = envelope.patch.name;
+                playerEntry.color = envelope.patch.color;
+                playerEntry.loadout = envelope.patch.loadout;
+                playerEntry.ready = false;
                 this.emitLobbyState();
                 break;
             }
             case 'READY_STATE': {
-                const player = this.hostPlayers.find((entry) => entry.id === senderId);
-                if (!player) return;
-                player.ready = envelope.ready;
+                const playerEntry = this.hostPlayers.find((entry) => entry.id === senderId);
+                if (!playerEntry) return;
+                playerEntry.ready = envelope.ready;
                 this.emitLobbyState();
                 break;
             }
@@ -230,7 +263,7 @@ export class Network {
 
     private emitLobbyState() {
         if (this.role !== 'host') return;
-        const players = this.hostPlayers.map((player) => ({ ...player }));
+        const players = this.hostPlayers.map((playerEntry) => ({ ...playerEntry }));
         this.onLobbyState?.(players, this.roomCode);
         const envelope: HostEnvelope = { kind: 'LOBBY_STATE', roomCode: this.roomCode, players };
         this.broadcast(envelope);
@@ -264,3 +297,64 @@ export class Network {
         return code;
     }
 }
+
+type IceServerConfig = {
+    urls: string | string[];
+    username?: string;
+    credential?: string;
+};
+
+function buildPeerOptions() {
+    const env = (import.meta as ImportMeta & { env?: Record<string, string | undefined> }).env ?? {};
+    const host = env.VITE_PEER_HOST?.trim();
+    const port = env.VITE_PEER_PORT ? Number(env.VITE_PEER_PORT) : undefined;
+    const path = env.VITE_PEER_PATH?.trim();
+    const secure = env.VITE_PEER_SECURE ? env.VITE_PEER_SECURE === 'true' : undefined;
+    const key = env.VITE_PEER_KEY?.trim();
+    const debug = env.VITE_PEER_DEBUG ? Number(env.VITE_PEER_DEBUG) : 1;
+
+    const options: Record<string, unknown> = {
+        debug,
+        config: buildRtcConfig(env.VITE_ICE_SERVERS_JSON)
+    };
+
+    if (host) options.host = host;
+    if (Number.isFinite(port)) options.port = port;
+    if (path) options.path = path;
+    if (typeof secure === 'boolean') options.secure = secure;
+    if (key) options.key = key;
+
+    return options;
+}
+
+function buildRtcConfig(rawIceServers?: string) {
+    if (rawIceServers) {
+        try {
+            const parsed = JSON.parse(rawIceServers) as IceServerConfig[];
+            if (Array.isArray(parsed) && parsed.length > 0) {
+                return { iceServers: parsed, sdpSemantics: 'unified-plan' };
+            }
+        } catch {
+            // Fall back to a simple public STUN config.
+        }
+    }
+
+    return {
+        iceServers: [
+            { urls: 'stun:stun.l.google.com:19302' },
+            { urls: 'stun:global.stun.twilio.com:3478?transport=udp' }
+        ],
+        sdpSemantics: 'unified-plan'
+    };
+}
+
+function readErrorMessage(error: unknown) {
+    if (error instanceof Error) {
+        return error.message;
+    }
+    if (typeof error === 'object' && error && 'type' in error) {
+        return String((error as { type: unknown }).type);
+    }
+    return 'Unknown connection failure.';
+}
+

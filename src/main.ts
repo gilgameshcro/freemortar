@@ -410,8 +410,9 @@ btnHost.addEventListener('click', async () => {
         lobbyPanel.classList.remove('hidden');
         renderLobby();
         updateReadyButton();
-    } catch {
-        window.alert('Unable to create the room. Check PeerJS connectivity and try again.');
+    } catch (error) {
+        const message = error instanceof Error ? error.message : 'Unable to create the room.';
+        window.alert('Unable to create the room. ' + message);
     } finally {
         btnHost.disabled = false;
         btnJoin.disabled = false;
@@ -438,8 +439,9 @@ btnJoin.addEventListener('click', async () => {
         lobbyStatus.textContent = `Connected to room ${roomCode}. Waiting for the host and other pilots.`;
         renderLobby();
         updateReadyButton();
-    } catch {
-        window.alert('Unable to join the room. Confirm the code and that the host is online.');
+    } catch (error) {
+        const message = error instanceof Error ? error.message : 'Unable to join the room.';
+        window.alert('Unable to join the room. ' + message);
     } finally {
         btnHost.disabled = false;
         btnJoin.disabled = false;
@@ -1325,6 +1327,8 @@ function escapeHtml(value: string) {
 function escapeAttribute(value: string) {
     return escapeHtml(value);
 }
+
+
 
 
 
