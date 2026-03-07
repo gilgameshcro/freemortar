@@ -344,32 +344,32 @@ export class Game {
             if (!impact) continue;
 
             this.projectiles.splice(index, 1);
-            this.persistShotTrace(projectile.ownerId, projectile.history);
-            const chaosLimit = this.getChaosFollowupLimit(projectile.weaponType);
-            if (this.isAuthoritative && chaosLimit >= 0 && projectile.chaosDepth < chaosLimit) {
-                const followX = clamp(impact.x, 2, LOGICAL_WIDTH - 3);
-                const followY = clamp(impact.y - 2, 2, LOGICAL_HEIGHT - 3);
-                const followAngle = this.nextChaosAngle(impact.x, impact.y, projectile.ownerId, projectile.chaosDepth);
-                const followup = projectile.createChaosFollowup(followX, followY, followAngle);
-                this.projectiles.push(followup);
-                this.audio.playFire(projectile.weaponType === 'large_chaos' || projectile.weaponType === 'large_chaos_mirv' ? 'large_chaos' : 'chaos');
-                if (this.network?.role === 'host') {
-                    this.network.sendGameMessage({
-                        kind: 'SHOT_FIRED',
-                        playerId: projectile.ownerId,
-                        angle: followAngle,
-                        power: projectile.launchPower,
-                        weaponIndex: -1,
-                        weaponType: followup.weaponType,
-                        startX: followX,
-                        startY: followY,
-                        turnNumber: this.state.turnNumber,
-                        consumeAmmo: false,
-                        chaosDepth: followup.chaosDepth
-                    });
-                }
-            }
             if (this.isAuthoritative) {
+                this.persistShotTrace(projectile.ownerId, projectile.history);
+                const chaosLimit = this.getChaosFollowupLimit(projectile.weaponType);
+                if (chaosLimit >= 0 && projectile.chaosDepth < chaosLimit) {
+                    const followX = clamp(impact.x, 2, LOGICAL_WIDTH - 3);
+                    const followY = clamp(impact.y - 2, 2, LOGICAL_HEIGHT - 3);
+                    const followAngle = this.nextChaosAngle(impact.x, impact.y, projectile.ownerId, projectile.chaosDepth);
+                    const followup = projectile.createChaosFollowup(followX, followY, followAngle);
+                    this.projectiles.push(followup);
+                    this.audio.playFire(projectile.weaponType === 'large_chaos' || projectile.weaponType === 'large_chaos_mirv' ? 'large_chaos' : 'chaos');
+                    if (this.network?.role === 'host') {
+                        this.network.sendGameMessage({
+                            kind: 'SHOT_FIRED',
+                            playerId: projectile.ownerId,
+                            angle: followAngle,
+                            power: projectile.launchPower,
+                            weaponIndex: -1,
+                            weaponType: followup.weaponType,
+                            startX: followX,
+                            startY: followY,
+                            turnNumber: this.state.turnNumber,
+                            consumeAmmo: false,
+                            chaosDepth: followup.chaosDepth
+                        });
+                    }
+                }
                 this.resolveShot(projectile.ownerId, projectile.weaponType, impact.x, impact.y, projectile.vx, projectile.vy);
             } else {
                 this.awaitingShotResult = this.projectiles.length > 0 || this.pendingProjectiles.length > 0;
@@ -583,6 +583,7 @@ export class Game {
         turnNumber: number
     ) {
         if (turnNumber !== this.state.turnNumber) return;
+        this.reconcileRemoteProjectile(weaponType, impactX, impactY, damageEvents[0]?.attackerId);
         const bursts = this.buildImpactBursts(weaponType, impactX, impactY, impactDirX, impactDirY);
         const maxBlastRadius = Math.max(1, ...bursts.map((burst) => Math.max(1, burst.radius)));
         this.awaitingShotResult = this.projectiles.length > 0 || this.pendingProjectiles.length > 0;
@@ -949,6 +950,38 @@ export class Game {
         if (this.shotTraces.length > 90) this.shotTraces.shift();
     }
 
+
+    private reconcileRemoteProjectile(weaponType: WeaponType, impactX: number, impactY: number, ownerId?: string) {
+        const candidates = this.projectiles
+            .map((projectile, index) => ({ projectile, index }))
+            .filter(({ projectile }) => projectile.weaponType === weaponType && (!ownerId || projectile.ownerId === ownerId));
+        if (!candidates.length) return;
+
+        const best = candidates
+            .map(({ projectile, index }) => {
+                let bestDistance = Number.POSITIVE_INFINITY;
+                let bestHistoryIndex = projectile.history.length - 1;
+                projectile.history.forEach((point, historyIndex) => {
+                    const distance = Math.hypot(point.x - impactX, point.y - impactY);
+                    if (distance < bestDistance) {
+                        bestDistance = distance;
+                        bestHistoryIndex = historyIndex;
+                    }
+                });
+                return { projectile, index, bestDistance, bestHistoryIndex };
+            })
+            .sort((left, right) => left.bestDistance - right.bestDistance)[0];
+
+        this.projectiles.splice(best.index, 1);
+        const traceHistory = best.projectile.history
+            .slice(0, Math.max(1, best.bestHistoryIndex + 1))
+            .map((point) => ({ x: point.x, y: point.y }));
+        const lastPoint = traceHistory[traceHistory.length - 1];
+        if (!lastPoint || Math.round(lastPoint.x) !== impactX || Math.round(lastPoint.y) !== impactY) {
+            traceHistory.push({ x: impactX, y: impactY });
+        }
+        this.persistShotTrace(best.projectile.ownerId, traceHistory);
+    }
     private draw() {
         const shakeX = this.screenShake > 0 ? Math.round((this.nextRandom() - 0.5) * this.screenShake) : 0;
         const shakeY = this.screenShake > 0 ? Math.round((this.nextRandom() - 0.5) * this.screenShake) : 0;

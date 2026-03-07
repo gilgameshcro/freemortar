@@ -470,6 +470,7 @@ let startTimer: number | null = null;
 let shopStartTimer: number | null = null;
 let activeBoardTab: 'battle' | 'campaign' = 'battle';
 let latestHudSnapshot: HudSnapshot | null = null;
+let weaponSelectFocused = false;
 let currentHintLabel = 'Arrow left and right aim, arrow up and down change power, hold Ctrl for fine adjustment, and space fires.';
 let localShopCursor = 0;
 let shopSelection: ShopSelection | null = null;
@@ -536,6 +537,13 @@ playerLoadoutSelect.addEventListener('change', () => {
 });
 roomCodeInput.addEventListener('input', () => {
     roomCodeInput.value = roomCodeInput.value.toUpperCase();
+});
+weaponSelect.addEventListener('focus', () => {
+    weaponSelectFocused = true;
+});
+weaponSelect.addEventListener('blur', () => {
+    weaponSelectFocused = false;
+    if (latestHudSnapshot) syncWeaponSelect(latestHudSnapshot);
 });
 weaponSelect.addEventListener('change', () => {
     game?.selectWeapon(Number(weaponSelect.value));
@@ -2093,16 +2101,31 @@ function updateGameHud(snapshot: HudSnapshot) {
     hudCampaign.textContent = snapshot.roundLabel;
     currentHintLabel = snapshot.hintLabel;
 
-    const weaponOptionsMarkup = snapshot.weaponOptions.map((option) => `<option value="${option.index}" ${option.disabled ? 'disabled' : ''}>${option.label}</option>`).join('');
-    if (weaponSelect.innerHTML !== weaponOptionsMarkup) {
-        weaponSelect.innerHTML = weaponOptionsMarkup;
-    }
-    weaponSelect.value = `${snapshot.selectedWeaponIndex}`;
-    weaponSelect.disabled = !snapshot.canSelectWeapon;
+    syncWeaponSelect(snapshot);
+
 
     syncBoardTabs();
     renderBoard(snapshot);
 }
+function syncWeaponSelect(snapshot: HudSnapshot) {
+    if (weaponSelectFocused) return;
+
+    const weaponOptionsMarkup = snapshot.weaponOptions.map((option) => `<option value="${option.index}" ${option.disabled ? 'disabled' : ''}>${option.label}</option>`).join('');
+    if (weaponSelect.innerHTML !== weaponOptionsMarkup) {
+        weaponSelect.innerHTML = weaponOptionsMarkup;
+    }
+
+    const nextValue = `${snapshot.selectedWeaponIndex}`;
+    if (weaponSelect.value !== nextValue) {
+        weaponSelect.value = nextValue;
+    }
+
+    const nextDisabled = !snapshot.canSelectWeapon;
+    if (weaponSelect.disabled !== nextDisabled) {
+        weaponSelect.disabled = nextDisabled;
+    }
+}
+
 function renderBoard(snapshot: HudSnapshot) {
     const entries = [...snapshot.scoreboard].sort((left, right) => activeBoardTab === 'battle'
         ? right.damage - left.damage || right.kills - left.kills || right.score - left.score
@@ -2132,6 +2155,7 @@ function syncBoardTabs() {
 
 function resetHud() {
     latestHudSnapshot = null;
+    weaponSelectFocused = false;
     hudPilot.textContent = 'No active pilot';
     hudPilot.style.color = '#fff4d7';
     hudShieldFill.style.width = '0%';
