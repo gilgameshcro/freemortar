@@ -737,6 +737,7 @@ export class Game {
         if (!this.settings.scoring.awardPlacement) return 0;
         if (placementIndex === 0) return this.settings.scoring.firstPlacePoints;
         if (placementIndex === 1) return this.settings.scoring.secondPlacePoints;
+        if (placementIndex === 2) return this.settings.scoring.thirdPlacePoints;
         return 0;
     }
 
@@ -951,9 +952,6 @@ export class Game {
         if (!this.onHudUpdate) return;
         const currentPlayer = this.currentPlayer;
         const winner = this.players.find((player) => player.id === this.state.winnerId);
-        const leader = this.getCampaignLeader();
-        const tankiest = this.getTankiestPlayer();
-        const mvp = this.getMvpPlayer();
 
         if (!currentPlayer) {
             this.onHudUpdate({
@@ -1002,8 +1000,8 @@ export class Game {
             pilotLabel: `${currentPlayer.name} | HP ${currentPlayer.health}`,
             turnColor: currentPlayer.color,
             roundLabel: `Round ${this.roundNumber}/${this.settings.rounds}`,
-            campaignLabel: `Leader ${leader?.name ?? 'None'} | MVP ${mvp?.name ?? 'None'} | Took most damage ${tankiest?.name ?? 'None'}`,
-            weaponLabel: `${weaponDefinition.glyph} ${weaponDefinition.name} | Ammo ${ammoLabel}`,
+            campaignLabel: `Round ${this.roundNumber}/${this.settings.rounds} | ${this.settings.terrainCollapse ? 'Collapse on' : 'Collapse off'}`,
+            weaponLabel: `${weaponDefinition.name} | Ammo ${ammoLabel}`,
             healthPercent: currentPlayer.health / 100,
             weaponDetail: `${weaponDefinition.flavor} | Blast ${weaponDefinition.blastRadius} | Damage ${weaponDefinition.damage}`,
             powerLabel: `Charge ${Math.round(currentPlayer.power)} / ${currentMaxPower}${this.settings.powerRule === 'health_linked' ? ' (HP-linked)' : ''}`,
@@ -1013,7 +1011,7 @@ export class Game {
             canSelectWeapon: this.canLocalControlCurrentTank(),
             weaponOptions: currentPlayer.weapons.map((entry, index) => ({
                 index,
-                label: `${WEAPON_DEFINITIONS[entry.type].glyph} ${WEAPON_DEFINITIONS[entry.type].name} ${entry.ammo < 0 ? 'INF' : entry.ammo}`,
+                label: `${WEAPON_DEFINITIONS[entry.type].name} ${entry.ammo < 0 ? 'INF' : entry.ammo}`,
                 detail: `${WEAPON_DEFINITIONS[entry.type].flavor} | Blast ${WEAPON_DEFINITIONS[entry.type].blastRadius} | Damage ${WEAPON_DEFINITIONS[entry.type].damage}`,
                 disabled: entry.ammo === 0
             })),
@@ -1171,30 +1169,6 @@ export class Game {
         };
     }
 
-    private getCampaignLeader() {
-        return this.players.slice().sort((left, right) => {
-            const leftCampaign = this.campaignById.get(left.id) ?? this.createCampaignStats();
-            const rightCampaign = this.campaignById.get(right.id) ?? this.createCampaignStats();
-            return rightCampaign.score - leftCampaign.score || rightCampaign.roundWins - leftCampaign.roundWins || rightCampaign.totalDamage - leftCampaign.totalDamage;
-        })[0] ?? null;
-    }
-
-    private getMvpPlayer() {
-        return this.players.slice().sort((left, right) => {
-            const leftCampaign = this.campaignById.get(left.id) ?? this.createCampaignStats();
-            const rightCampaign = this.campaignById.get(right.id) ?? this.createCampaignStats();
-            return rightCampaign.score - leftCampaign.score || rightCampaign.totalKills - leftCampaign.totalKills || rightCampaign.totalDamage - leftCampaign.totalDamage;
-        })[0] ?? null;
-    }
-
-    private getTankiestPlayer() {
-        return this.players.slice().sort((left, right) => {
-            const leftCampaign = this.campaignById.get(left.id) ?? this.createCampaignStats();
-            const rightCampaign = this.campaignById.get(right.id) ?? this.createCampaignStats();
-            return rightCampaign.totalDamageTaken - leftCampaign.totalDamageTaken || rightCampaign.totalShots - leftCampaign.totalShots;
-        })[0] ?? null;
-    }
-
     private nextChaosAngle(impactX: number, impactY: number, ownerId: string, depth: number) {
         const ownerHash = ownerId.split('').reduce((sum, char) => ((sum * 33) ^ char.charCodeAt(0)) >>> 0, 5381);
         const seed = Math.sin((impactX + 17) * 12.9898 + (impactY + 41) * 78.233 + ownerHash * 0.013 + depth * 19.19);
@@ -1219,6 +1193,13 @@ export class Game {
         return `rgba(${(bigint >> 16) & 255}, ${(bigint >> 8) & 255}, ${bigint & 255}, ${alpha})`;
     }
 }
+
+
+
+
+
+
+
 
 
 

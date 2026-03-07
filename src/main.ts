@@ -25,6 +25,7 @@ import type {
     PlayerSetup,
     PlayerStatsSnapshot,
     PowerRule,
+    RoundOrderMode,
     ScoringSettings,
     WeaponState,
     WeaponType,
@@ -32,8 +33,9 @@ import type {
 } from './types';
 
 type LobbyMode = 'idle' | 'online-host' | 'online-client' | 'local';
-type IntermissionStage = 'hidden' | 'victory' | 'stats' | 'shop';
+type IntermissionStage = 'hidden' | 'victory' | 'stats' | 'campaign' | 'shop';
 type LocalProfile = { name: string; color: string; loadout: LoadoutId };
+type ShopSelection = { playerId: string; weaponType: WeaponType; source: 'market' | 'stock' };
 
 const SHOP_WEAPON_ORDER: WeaponType[] = ['mortar', 'needle', 'nova', 'merv', 'chaos'];
 
@@ -56,7 +58,8 @@ const DEFAULT_SCORING: ScoringSettings = {
     killPointValue: 50,
     awardPlacement: true,
     firstPlacePoints: 1000,
-    secondPlacePoints: 50
+    secondPlacePoints: 50,
+    thirdPlacePoints: 25
 };
 
 const DEFAULT_SETTINGS: MatchSettings = {
@@ -66,7 +69,8 @@ const DEFAULT_SETTINGS: MatchSettings = {
     powerRule: 'health_linked',
     rounds: 1,
     scoring: { ...DEFAULT_SCORING },
-    weaponCostMultiplier: 1
+    weaponCostMultiplier: 1,
+    roundOrder: 'player_number'
 };
 
 const app = document.getElementById('app');
@@ -116,59 +120,86 @@ app.innerHTML = `
                 </div>
             </section>
 
-            <div class="menu-grid">
-                <section class="pixel-panel rules-panel">
-                    <p class="eyebrow">MATCH RULES</p>
-                    <h2>Battle Setup</h2>
+            <section class="pixel-panel rules-panel battle-setup-panel">
+                <div class="battle-setup-head">
+                    <div>
+                        <p class="eyebrow">MATCH RULES</p>
+                        <h2>Battle Setup</h2>
+                    </div>
                     <p class="field-help settings-help">These settings apply to local matches and to online rooms you host. Joiners can inspect them, but only the host controls them.</p>
-                    <label class="field-label" for="powerRule">Power Cap</label>
-                    <select id="powerRule" class="pixel-select">
-                        <option value="health_linked">HP Linked (200 max, -2 per HP lost)</option>
-                        <option value="static">Static</option>
-                    </select>
-                    <label class="field-label" for="windMode">Wind Mode</label>
-                    <select id="windMode" class="pixel-select">
-                        <option value="variable">Variable</option>
-                        <option value="constant">Constant</option>
-                        <option value="disabled">Disabled</option>
-                    </select>
-                    <label class="field-label" for="windMax">Wind Strength</label>
-                    <select id="windMax" class="pixel-select">
-                        <option value="0.25">Low</option>
-                        <option value="0.45" selected>Medium</option>
-                        <option value="0.7">High</option>
-                    </select>
-                    <label class="field-label" for="roundCount">Rounds</label>
-                    <input id="roundCount" class="pixel-input" type="number" min="1" max="99" step="1" value="1" />
-                    <label class="field-label" for="weaponCostMultiplier">Weapon Cost Multiplier</label>
-                    <input id="weaponCostMultiplier" class="pixel-input" type="number" min="0.25" max="5" step="0.25" value="1" />
-                    <div class="scoring-panel">
+                </div>
+                <div class="battle-setup-grid">
+                    <label class="setting-field span-3" for="powerRule">
+                        <span class="field-label">Power Cap</span>
+                        <select id="powerRule" class="pixel-select">
+                            <option value="health_linked">HP Linked (200 max, -2 per HP lost)</option>
+                            <option value="static">Static</option>
+                        </select>
+                    </label>
+                    <label class="setting-field span-2" for="windMode">
+                        <span class="field-label">Wind Mode</span>
+                        <select id="windMode" class="pixel-select">
+                            <option value="variable">Variable</option>
+                            <option value="constant">Constant</option>
+                            <option value="disabled">Disabled</option>
+                        </select>
+                    </label>
+                    <label class="setting-field span-1" for="windMax">
+                        <span class="field-label">Wind Strength</span>
+                        <select id="windMax" class="pixel-select">
+                            <option value="0.25">Low</option>
+                            <option value="0.45" selected>Medium</option>
+                            <option value="0.7">High</option>
+                        </select>
+                    </label>
+                    <label class="setting-field span-1" for="roundCount">
+                        <span class="field-label">Rounds</span>
+                        <input id="roundCount" class="pixel-input" type="number" min="1" max="99" step="1" value="1" />
+                    </label>
+                    <label class="setting-field span-2" for="roundOrder">
+                        <span class="field-label">Round Order</span>
+                        <select id="roundOrder" class="pixel-select">
+                            <option value="player_number">Player Number</option>
+                            <option value="random">Random</option>
+                            <option value="winning_order">Winning Order</option>
+                            <option value="reverse_winning_order">Reverse Winning Order</option>
+                        </select>
+                    </label>
+                    <label class="setting-field span-1" for="weaponCostMultiplier">
+                        <span class="field-label">Weapon Cost</span>
+                        <input id="weaponCostMultiplier" class="pixel-input" type="number" min="0.25" max="5" step="0.25" value="1" />
+                    </label>
+                    <div class="scoring-panel span-6">
                         <div class="scoring-head">
                             <label class="field-label">Scoring Rules</label>
-                            <p class="field-help compact-help">Toggle each scoring source and tune its value directly.</p>
+                            <p class="field-help compact-help">Toggle scoring sources and tune their values directly.</p>
                         </div>
-                        <label class="rule-row" for="scoringDamageToggle">
-                            <span class="rule-toggle"><input id="scoringDamageToggle" type="checkbox" checked /> Damage</span>
-                            <span class="rule-value"><input id="scoringDamageValue" class="pixel-input compact-input" type="number" min="0" max="20" step="1" value="1" /> per damage</span>
-                        </label>
-                        <label class="rule-row" for="scoringKillsToggle">
-                            <span class="rule-toggle"><input id="scoringKillsToggle" type="checkbox" checked /> Kills</span>
-                            <span class="rule-value"><input id="scoringKillValue" class="pixel-input compact-input" type="number" min="0" max="5000" step="10" value="50" /> per kill</span>
-                        </label>
-                        <label class="rule-row" for="scoringPlacementToggle">
-                            <span class="rule-toggle"><input id="scoringPlacementToggle" type="checkbox" checked /> Placement</span>
-                            <span class="rule-value dual-values">
-                                <input id="scoringFirstValue" class="pixel-input compact-input" type="number" min="0" max="10000" step="10" value="1000" /> first
-                                <input id="scoringSecondValue" class="pixel-input compact-input" type="number" min="0" max="10000" step="10" value="50" /> second
-                            </span>
-                        </label>
+                        <div class="scoring-rules-grid">
+                            <label class="rule-row" for="scoringDamageToggle">
+                                <span class="rule-toggle"><input id="scoringDamageToggle" type="checkbox" checked /> Damage</span>
+                                <span class="rule-value"><input id="scoringDamageValue" class="pixel-input compact-input" type="number" min="0" max="20" step="1" value="1" /> per point</span>
+                            </label>
+                            <label class="rule-row" for="scoringKillsToggle">
+                                <span class="rule-toggle"><input id="scoringKillsToggle" type="checkbox" checked /> Kills</span>
+                                <span class="rule-value"><input id="scoringKillValue" class="pixel-input compact-input" type="number" min="0" max="5000" step="10" value="50" /> per kill</span>
+                            </label>
+                            <label class="rule-row span-2" for="scoringPlacementToggle">
+                                <span class="rule-toggle"><input id="scoringPlacementToggle" type="checkbox" checked /> Placement</span>
+                                <span class="rule-value placement-values">
+                                    <span><input id="scoringFirstValue" class="pixel-input compact-input placement-input" type="number" min="0" max="10000" step="10" value="1000" /> first</span>
+                                    <span><input id="scoringSecondValue" class="pixel-input compact-input placement-input" type="number" min="0" max="10000" step="10" value="50" /> second</span>
+                                    <span><input id="scoringThirdValue" class="pixel-input compact-input placement-input" type="number" min="0" max="10000" step="10" value="25" /> third</span>
+                                </span>
+                            </label>
+                        </div>
                     </div>
-                    <label class="toggle-row" for="terrainCollapse">
+                    <label class="toggle-row setting-toggle span-2" for="terrainCollapse">
                         <input id="terrainCollapse" type="checkbox" checked />
                         <span>Terrain Collapse</span>
                     </label>
-                </section>
-
+                </div>
+            </section>
+            <div class="menu-grid session-grid">
                 <section class="pixel-panel session-panel">
                     <div class="mode-card">
                         <div>
@@ -234,30 +265,29 @@ app.innerHTML = `
                 </div>
             </div>
 
-            <div class="game-status-row">
-                <section class="pixel-panel hud-card turn-card">
-                    <p class="eyebrow">Turn</p>
-                    <h3 id="hudTurn">Stand by</h3>
-                    <p id="hudPilot" class="hud-subline">No active pilot</p>
+            <div class="game-status-row compact-hud-row">
+                <section class="pixel-panel hud-card pilot-card-live">
+                    <p class="eyebrow">Active Pilot</p>
+                    <h3 id="hudPilot">No active pilot</h3>
                     <div class="health-meter"><div class="health-bar"><span id="hudHealthFill"></span></div></div>
-                    <p id="hudRound" class="hud-subline">Round status</p>
                 </section>
-                <section class="pixel-panel hud-card arsenal-card">
+                <section class="pixel-panel hud-card arsenal-card compact-arsenal-card">
                     <p class="eyebrow">Arsenal</p>
                     <select id="weaponSelect" class="pixel-select compact"></select>
-                    <h3 id="hudWeaponTitle">Weapon Ready</h3>
-                    <p id="hudWeapon" class="hud-subline">Weapon info</p>
-                    <div class="power-meter">
+                    <p id="hudWeapon" class="hud-subline">Ammo | Blast | Damage</p>
+                </section>
+                <section class="pixel-panel hud-card charge-card">
+                    <p class="eyebrow">Charge + Aim</p>
+                    <div class="power-meter compact-power-meter">
                         <div class="power-bar"><span id="hudPowerFill"></span></div>
                         <p id="hudPowerLabel" class="hud-subline">Charge</p>
                         <p id="hudAngle" class="hud-subline">Angle</p>
                     </div>
                 </section>
-                <section class="pixel-panel hud-card conditions-card">
+                <section class="pixel-panel hud-card conditions-card compact-conditions-card">
                     <p class="eyebrow">Conditions</p>
                     <h3 id="hudWind">Wind</h3>
-                    <p id="hudWinner" class="hud-subline">No winner yet</p>
-                    <p id="hudCampaign" class="hud-subline">Campaign status</p>
+                    <p id="hudCampaign" class="hud-subline">Round status</p>
                 </section>
             </div>
 
@@ -272,16 +302,15 @@ app.innerHTML = `
                     </div>
                 </div>
 
-                <section class="pixel-panel hud-card scoreboard-card">
-                    <div class="board-header">
-                        <p class="eyebrow">Battle Board</p>
+                <section class="pixel-panel hud-card scoreboard-card compact-scoreboard-card">
+                    <p class="eyebrow board-title">Battle Board</p>
+                    <div class="board-header compact-board-header">
                         <div class="board-tabs">
                             <button id="boardTabBattle" class="board-tab active" type="button">Battle</button>
                             <button id="boardTabCampaign" class="board-tab" type="button">Campaign</button>
                         </div>
                     </div>
-                    <div class="board-layout">
-                        <div id="scoreChart" class="score-chart"></div>
+                    <div class="board-layout compact-board-layout">
                         <div id="scoreboard" class="scoreboard"></div>
                     </div>
                 </section>
@@ -304,6 +333,7 @@ const powerRuleSelect = mustElement<HTMLSelectElement>('powerRule');
 const windModeSelect = mustElement<HTMLSelectElement>('windMode');
 const windMaxSelect = mustElement<HTMLSelectElement>('windMax');
 const roundCountInput = mustElement<HTMLInputElement>('roundCount');
+const roundOrderSelect = mustElement<HTMLSelectElement>('roundOrder');
 const weaponCostMultiplierInput = mustElement<HTMLInputElement>('weaponCostMultiplier');
 const scoringDamageToggle = mustElement<HTMLInputElement>('scoringDamageToggle');
 const scoringDamageValue = mustElement<HTMLInputElement>('scoringDamageValue');
@@ -312,6 +342,7 @@ const scoringKillValue = mustElement<HTMLInputElement>('scoringKillValue');
 const scoringPlacementToggle = mustElement<HTMLInputElement>('scoringPlacementToggle');
 const scoringFirstValue = mustElement<HTMLInputElement>('scoringFirstValue');
 const scoringSecondValue = mustElement<HTMLInputElement>('scoringSecondValue');
+const scoringThirdValue = mustElement<HTMLInputElement>('scoringThirdValue');
 const terrainCollapseInput = mustElement<HTMLInputElement>('terrainCollapse');
 const volumeRangeMenu = mustElement<HTMLInputElement>('volumeRangeMenu');
 const volumeRangeGame = mustElement<HTMLInputElement>('volumeRangeGame');
@@ -332,21 +363,16 @@ const btnMuteMenu = mustElement<HTMLButtonElement>('btnMuteMenu');
 const btnMusicMenu = mustElement<HTMLButtonElement>('btnMusicMenu');
 const btnMuteGame = mustElement<HTMLButtonElement>('btnMuteGame');
 const btnMusicGame = mustElement<HTMLButtonElement>('btnMusicGame');
-const hudTurn = mustElement<HTMLElement>('hudTurn');
 const hudPilot = mustElement<HTMLElement>('hudPilot');
 const hudHealthFill = mustElement<HTMLElement>('hudHealthFill');
-const hudRound = mustElement<HTMLElement>('hudRound');
-const hudWeaponTitle = mustElement<HTMLElement>('hudWeaponTitle');
 const hudWeapon = mustElement<HTMLElement>('hudWeapon');
 const hudPowerFill = mustElement<HTMLElement>('hudPowerFill');
 const hudAngle = mustElement<HTMLElement>('hudAngle');
 const hudPowerLabel = mustElement<HTMLElement>('hudPowerLabel');
 const hudWind = mustElement<HTMLElement>('hudWind');
-const hudWinner = mustElement<HTMLElement>('hudWinner');
 const hudCampaign = mustElement<HTMLElement>('hudCampaign');
 const hudHint = mustElement<HTMLElement>('hudHint');
 const weaponSelect = mustElement<HTMLSelectElement>('weaponSelect');
-const scoreChart = mustElement<HTMLElement>('scoreChart');
 const scoreboard = mustElement<HTMLElement>('scoreboard');
 const boardTabBattle = mustElement<HTMLButtonElement>('boardTabBattle');
 const boardTabCampaign = mustElement<HTMLButtonElement>('boardTabCampaign');
@@ -367,12 +393,15 @@ let startTimer: number | null = null;
 let shopStartTimer: number | null = null;
 let activeBoardTab: 'battle' | 'campaign' = 'battle';
 let latestHudSnapshot: HudSnapshot | null = null;
+let localShopCursor = 0;
+let shopSelection: ShopSelection | null = null;
 playerNameInput.value = 'Pilot One';
 roomCodeInput.value = '';
 powerRuleSelect.value = DEFAULT_SETTINGS.powerRule;
 windModeSelect.value = DEFAULT_SETTINGS.windMode;
 windMaxSelect.value = `${DEFAULT_SETTINGS.maxWind}`;
 roundCountInput.value = `${DEFAULT_SETTINGS.rounds}`;
+roundOrderSelect.value = DEFAULT_SETTINGS.roundOrder;
 weaponCostMultiplierInput.value = `${DEFAULT_SETTINGS.weaponCostMultiplier}`;
 scoringDamageToggle.checked = DEFAULT_SETTINGS.scoring.awardDamage;
 scoringDamageValue.value = `${DEFAULT_SETTINGS.scoring.damagePointValue}`;
@@ -381,6 +410,7 @@ scoringKillValue.value = `${DEFAULT_SETTINGS.scoring.killPointValue}`;
 scoringPlacementToggle.checked = DEFAULT_SETTINGS.scoring.awardPlacement;
 scoringFirstValue.value = `${DEFAULT_SETTINGS.scoring.firstPlacePoints}`;
 scoringSecondValue.value = `${DEFAULT_SETTINGS.scoring.secondPlacePoints}`;
+scoringThirdValue.value = `${DEFAULT_SETTINGS.scoring.thirdPlacePoints}`;
 terrainCollapseInput.checked = DEFAULT_SETTINGS.terrainCollapse;
 volumeRangeMenu.value = `${Math.round(audio.currentVolume * 100)}`;
 volumeRangeGame.value = volumeRangeMenu.value;
@@ -556,6 +586,7 @@ function readMatchSettingsForm(): MatchSettings {
         terrainCollapse: terrainCollapseInput.checked,
         powerRule: powerRuleSelect.value as PowerRule,
         rounds: clampSetting(Number(roundCountInput.value), 1, 99, DEFAULT_SETTINGS.rounds),
+        roundOrder: roundOrderSelect.value as RoundOrderMode,
         scoring: readScoringSettingsForm(),
         weaponCostMultiplier: clampSetting(Number(weaponCostMultiplierInput.value), 0.25, 5, DEFAULT_SETTINGS.weaponCostMultiplier)
     };
@@ -569,7 +600,8 @@ function readScoringSettingsForm(): ScoringSettings {
         killPointValue: clampSetting(Number(scoringKillValue.value), 0, 5000, DEFAULT_SCORING.killPointValue),
         awardPlacement: scoringPlacementToggle.checked,
         firstPlacePoints: clampSetting(Number(scoringFirstValue.value), 0, 10000, DEFAULT_SCORING.firstPlacePoints),
-        secondPlacePoints: clampSetting(Number(scoringSecondValue.value), 0, 10000, DEFAULT_SCORING.secondPlacePoints)
+        secondPlacePoints: clampSetting(Number(scoringSecondValue.value), 0, 10000, DEFAULT_SCORING.secondPlacePoints),
+        thirdPlacePoints: clampSetting(Number(scoringThirdValue.value), 0, 10000, DEFAULT_SCORING.thirdPlacePoints)
     };
 }
 
@@ -768,6 +800,8 @@ function startCampaign(players: CampaignPlayer[], activeNetwork: Network | null)
     currentRound = 1;
     campaignComplete = false;
     latestRoundSummary = null;
+    localShopCursor = 0;
+    shopSelection = null;
     intermissionStage = 'hidden';
     renderIntermission();
     const payload = buildMatchPayload(campaignPlayers, currentRound, currentSettings);
@@ -779,21 +813,39 @@ function startCampaign(players: CampaignPlayer[], activeNetwork: Network | null)
 
 function buildMatchPayload(players: CampaignPlayer[], roundNumber: number, settings: MatchSettings): MatchStartPayload {
     const seed = Math.floor(Math.random() * 0x7fffffff);
+    const orderedPlayers = orderPlayersForRound(players, settings, roundNumber, seed);
     return {
         seed,
-        players: players.map(toPlayerSetup),
+        players: orderedPlayers.map(toPlayerSetup),
         currentPlayerIndex: 0,
         wind: buildInitialWind(seed, settings),
         turnNumber: 1,
         roundNumber,
         settings,
-        campaignStats: players.map((player) => ({ ...player.stats }))
+        campaignStats: orderedPlayers.map((player) => ({ ...player.stats }))
     };
 }
-
 function buildInitialWind(seed: number, settings: MatchSettings) {
     if (settings.windMode === 'disabled') return 0;
     return ((((seed % 1000) / 1000) - 0.5) * 2) * settings.maxWind;
+}
+
+function orderPlayersForRound(players: CampaignPlayer[], settings: MatchSettings, roundNumber: number, seed: number) {
+    const ordered = players.map((player) => ({ ...player, weapons: player.weapons.map((weapon) => ({ ...weapon })) }));
+    switch (settings.roundOrder) {
+        case 'random':
+            return ordered.sort((left, right) => seededOrderValue(left.id, roundNumber, seed) - seededOrderValue(right.id, roundNumber, seed));
+        case 'winning_order':
+            return ordered.sort((left, right) => right.stats.score - left.stats.score || right.stats.roundWins - left.stats.roundWins || right.stats.totalDamage - left.stats.totalDamage);
+        case 'reverse_winning_order':
+            return ordered.sort((left, right) => left.stats.score - right.stats.score || left.stats.roundWins - right.stats.roundWins || left.stats.totalDamage - right.stats.totalDamage);
+        default:
+            return ordered;
+    }
+}
+
+function seededOrderValue(playerId: string, roundNumber: number, seed: number) {
+    return playerId.split('').reduce((sum, char) => ((sum * 33) ^ char.charCodeAt(0)) >>> 0, (seed ^ roundNumber) >>> 0);
 }
 
 function launchMatch(payload: MatchStartPayload, activeNetwork: Network | null) {
@@ -821,6 +873,8 @@ function handleRoundEnd(summary: RoundSummary) {
     latestRoundSummary = summary;
     currentRound = summary.roundNumber;
     campaignComplete = currentRound >= currentSettings.rounds;
+    localShopCursor = 0;
+    shopSelection = null;
 
     campaignPlayers = campaignPlayers.map((player) => {
         const roundPlayer = summary.players.find((entry) => entry.id === player.id);
@@ -916,6 +970,11 @@ function handleIntermissionClick(event: MouseEvent) {
         return;
     }
     if (action === 'stats-next') {
+        intermissionStage = 'campaign';
+        renderIntermission();
+        return;
+    }
+    if (action === 'campaign-next') {
         if (campaignComplete) {
             leaveMatch();
             return;
@@ -924,18 +983,24 @@ function handleIntermissionClick(event: MouseEvent) {
         renderIntermission();
         return;
     }
-    if (action === 'buy') {
+    if (action === 'select-weapon') {
         const playerId = button.dataset.playerId;
         const weaponType = button.dataset.weapon as WeaponType | undefined;
-        if (!playerId || !weaponType) return;
-        purchaseWeapon(playerId, weaponType);
+        const source = button.dataset.source as ShopSelection['source'] | undefined;
+        if (!playerId || !weaponType || !source) return;
+        if (!getInteractivePlayerIds().has(playerId)) return;
+        shopSelection = { playerId, weaponType, source };
+        renderIntermission();
         return;
     }
-    if (action === 'sell') {
-        const playerId = button.dataset.playerId;
-        const weaponType = button.dataset.weapon as WeaponType | undefined;
-        if (!playerId || !weaponType) return;
-        sellWeapon(playerId, weaponType);
+    if (action === 'buy-selected') {
+        if (!shopSelection) return;
+        purchaseWeapon(shopSelection.playerId, shopSelection.weaponType);
+        return;
+    }
+    if (action === 'sell-selected') {
+        if (!shopSelection) return;
+        sellWeapon(shopSelection.playerId, shopSelection.weaponType);
         return;
     }
     if (action === 'toggle-shop-ready') {
@@ -987,11 +1052,22 @@ function toggleShopReady(playerId: string) {
     const localIds = getInteractivePlayerIds();
     if (!localIds.has(playerId)) return;
     campaignPlayers = campaignPlayers.map((player) => player.id === playerId ? { ...player, shopReady: !player.shopReady } : player);
+    const currentIndex = campaignPlayers.findIndex((player) => player.id === playerId);
+    const currentPlayer = campaignPlayers[currentIndex];
+    if (!network) {
+        if (currentPlayer?.shopReady) {
+            const nextIndex = campaignPlayers.findIndex((player, index) => index > currentIndex && !player.shopReady);
+            const fallbackIndex = campaignPlayers.findIndex((player) => !player.shopReady);
+            localShopCursor = nextIndex >= 0 ? nextIndex : Math.max(0, fallbackIndex);
+        } else if (currentIndex >= 0) {
+            localShopCursor = currentIndex;
+        }
+    }
+    shopSelection = null;
     renderIntermission();
     syncShopState(playerId);
     maybeLaunchNextRound();
 }
-
 function syncShopState(playerId: string) {
     if (!network) return;
     const player = campaignPlayers.find((entry) => entry.id === playerId);
@@ -1015,6 +1091,8 @@ function maybeLaunchNextRound() {
     if (network && network.role === 'client') return;
     shopStartTimer = window.setTimeout(() => {
         currentRound += 1;
+        localShopCursor = 0;
+        shopSelection = null;
         const payload = buildMatchPayload(campaignPlayers.map((player) => ({ ...player, shopReady: false })), currentRound, currentSettings);
         campaignPlayers = campaignPlayers.map((player) => ({ ...player, shopReady: false }));
         if (network?.role === 'host') network.broadcastStart(payload);
@@ -1024,9 +1102,63 @@ function maybeLaunchNextRound() {
 
 function getInteractivePlayerIds() {
     if (!network) {
+        if (intermissionStage === 'shop') {
+            const localPlayer = getLocalShopPlayer();
+            return new Set(localPlayer ? [localPlayer.id] : []);
+        }
         return new Set(campaignPlayers.map((player) => player.id));
     }
-    return new Set([network.myId]);
+    return new Set(network.myId ? [network.myId] : []);
+}
+
+function getLocalShopPlayer() {
+    if (!campaignPlayers.length) return null;
+    const forwardIndex = campaignPlayers.findIndex((player, index) => index >= localShopCursor && !player.shopReady);
+    if (forwardIndex >= 0) {
+        localShopCursor = forwardIndex;
+        return campaignPlayers[forwardIndex] ?? null;
+    }
+    const firstPending = campaignPlayers.findIndex((player) => !player.shopReady);
+    if (firstPending >= 0) {
+        localShopCursor = firstPending;
+        return campaignPlayers[firstPending] ?? null;
+    }
+    localShopCursor = Math.max(0, Math.min(localShopCursor, campaignPlayers.length - 1));
+    return campaignPlayers[localShopCursor] ?? null;
+}
+
+function getShopFocusPlayer() {
+    if (!campaignPlayers.length) return null;
+    if (!network) return getLocalShopPlayer();
+    const localId = network.myId;
+    return campaignPlayers.find((player) => player.id === localId) ?? null;
+}
+
+function ensureShopSelection(player: CampaignPlayer | null) {
+    if (!player) {
+        shopSelection = null;
+        return null;
+    }
+
+    const marketTypes = SHOP_WEAPON_ORDER.filter((type) => getWeaponShopPrice(type, currentSettings.weaponCostMultiplier) !== null);
+    const stockTypes = player.weapons.filter((weapon) => weapon.type !== 'cannon' && weapon.ammo > 0).map((weapon) => weapon.type);
+    const selectionIsValid = shopSelection?.playerId === player.id && (
+        (shopSelection.source === 'market' && marketTypes.includes(shopSelection.weaponType))
+        || (shopSelection.source === 'stock' && stockTypes.includes(shopSelection.weaponType))
+    );
+
+    if (selectionIsValid) return shopSelection;
+    if (marketTypes.length > 0) {
+        shopSelection = { playerId: player.id, weaponType: marketTypes[0], source: 'market' };
+        return shopSelection;
+    }
+    if (stockTypes.length > 0) {
+        shopSelection = { playerId: player.id, weaponType: stockTypes[0], source: 'stock' };
+        return shopSelection;
+    }
+
+    shopSelection = null;
+    return null;
 }
 
 function renderIntermission() {
@@ -1044,228 +1176,366 @@ function renderIntermission() {
         renderStatsScreen();
         return;
     }
+    if (intermissionStage === 'campaign') {
+        renderCampaignScreen();
+        return;
+    }
     renderShopScreen();
 }
+
 function renderVictoryScreen() {
     if (!latestRoundSummary) return;
-    const summary = latestRoundSummary;
-    const winner = summary.players.find((player) => player.id === summary.winnerId) ?? null;
+    const winner = latestRoundSummary.players.find((player) => player.id === latestRoundSummary?.winnerId) ?? null;
     intermissionScreen.innerHTML = `
         <div class="intermission-card victory-card">
             <p class="eyebrow">ROUND COMPLETE</p>
             <h2 style="color:${winner?.color ?? '#fff4d7'}">${escapeHtml(winner?.name ?? 'No one')} Wins</h2>
-            <p class="hero-copy">The battlefield settles. Review the debrief, inspect the campaign charts, then prepare the next loadout.</p>
-            <div class="victory-strip">${latestRoundSummary?.players.map((player) => `<span style="background:${player.color}">${escapeHtml(player.name)}</span>`).join('')}</div>
-            <button class="pixel-button primary" data-action="victory-next">Open Debrief</button>
+            <p class="hero-copy">The battlefield settles. Review the round, inspect the campaign race, then rearm for the next drop.</p>
+            <div class="victory-strip">${latestRoundSummary.players.map((player) => `<span style="background:${player.color}">${escapeHtml(player.name)}</span>`).join('')}</div>
+            <button class="pixel-button primary" data-action="victory-next">Open Round Report</button>
         </div>
     `;
 }
 
 function renderStatsScreen() {
-    const damageChart = buildConicChart(campaignPlayers.map((player) => ({ color: player.color, value: player.stats.damage })));
-    const scoreChartValue = buildConicChart(campaignPlayers.map((player) => ({ color: player.color, value: player.stats.score })));
-    const maxRoundDamage = Math.max(1, ...campaignPlayers.map((player) => player.stats.damage));
-    const maxCampaignScore = Math.max(1, ...campaignPlayers.map((player) => player.stats.score));
-    const maxDamageTaken = Math.max(1, ...campaignPlayers.map((player) => player.stats.totalDamageTaken));
-    const leaders = [...campaignPlayers].sort((left, right) => right.stats.score - left.stats.score || right.stats.totalDamage - left.stats.totalDamage);
+    if (!latestRoundSummary) return;
+    const rankedPlayers = getRoundRankings(latestRoundSummary.players, latestRoundSummary.winnerId);
+    const damageChart = buildConicChart(rankedPlayers.map((player) => ({ color: player.color, value: player.stats.damage })));
+    const maxRoundDamage = Math.max(1, ...rankedPlayers.map((player) => player.stats.damage));
+    const maxDamageTaken = Math.max(1, ...rankedPlayers.map((player) => player.stats.damageTaken));
+    const maxHits = Math.max(1, ...rankedPlayers.map((player) => player.stats.hits));
+    const accolades = buildRoundAccolades(rankedPlayers, latestRoundSummary.winnerId);
 
     intermissionScreen.innerHTML = `
         <div class="intermission-card stats-card deluxe-stats-card">
-            <div class="stats-hero-grid">
-                <section class="stats-hero-panel">
+            <div class="stats-hero-grid round-report-grid">
+                <section class="stats-hero-panel round-overview-panel">
                     <p class="eyebrow">DEBRIEF</p>
                     <h2>Round ${currentRound} Report</h2>
-                    <p class="hero-copy">Round damage, campaign momentum, and pilot pressure traces color-coded across the whole field.</p>
-                    <div class="stats-dual-charts">
-                        <div class="chart-cluster compact-chart-cluster">
-                            <p class="eyebrow">Round Damage</p>
+                    <div class="round-chart-stack">
+                        <div>
+                            <p class="eyebrow chart-title">Round Damage</p>
                             <div class="big-chart" style="background:${damageChart}"></div>
                         </div>
-                        <div class="chart-cluster compact-chart-cluster">
-                            <p class="eyebrow">Campaign Share</p>
-                            <div class="big-chart" style="background:${scoreChartValue}"></div>
+                        <div class="chart-legend-list">
+                            ${rankedPlayers.map((player) => `
+                                <div class="legend-row">
+                                    <span class="legend-swatch" style="--swatch:${player.color}"></span>
+                                    <span>${escapeHtml(player.name)}</span>
+                                    <strong>${player.stats.damage}</strong>
+                                </div>
+                            `).join('')}
                         </div>
                     </div>
                 </section>
-                <section class="stats-hero-panel skyline-panel">
-                    <p class="eyebrow">Campaign Ladder</p>
-                    <div class="skyline-chart">
-                        ${leaders.map((player) => {
-                            const height = Math.max(18, Math.round((player.stats.score / maxCampaignScore) * 100));
-                            return `
-                                <div class="skyline-bar" style="--accent:${player.color}; --height:${height}%">
-                                    <span class="skyline-column"></span>
-                                    <strong>${player.stats.score}</strong>
-                                    <span>${escapeHtml(player.name)}</span>
-                                </div>
-                            `;
-                        }).join('')}
-                    </div>
+                <section class="stats-hero-panel round-ranking-panel">
+                    <p class="eyebrow">Round Ranking</p>
+                    <table class="report-table">
+                        <thead>
+                            <tr><th>#</th><th>Pilot</th><th>DMG</th><th>KO</th><th>Hits</th><th>Taken</th></tr>
+                        </thead>
+                        <tbody>
+                            ${rankedPlayers.map((player, index) => `
+                                <tr>
+                                    <td>${index + 1}</td>
+                                    <td><span class="table-player" style="--accent:${player.color}">${escapeHtml(player.name)}${player.id === latestRoundSummary?.winnerId ? ' <em>WIN</em>' : ''}</span></td>
+                                    <td>${player.stats.damage}</td>
+                                    <td>${player.stats.kills}</td>
+                                    <td>${player.stats.hits}</td>
+                                    <td>${player.stats.damageTaken}</td>
+                                </tr>
+                            `).join('')}
+                        </tbody>
+                    </table>
                 </section>
             </div>
-            <div class="stats-grid deluxe-stats-grid">
-                ${campaignPlayers.map((player) => `
+            <section class="accolade-grid">
+                ${accolades.map((accolade) => `
+                    <article class="accolade-card" style="--accent:${accolade.color}">
+                        <p class="eyebrow">${accolade.title}</p>
+                        <strong>${escapeHtml(accolade.name)}</strong>
+                        <span>${accolade.value}</span>
+                    </article>
+                `).join('')}
+            </section>
+            <div class="stats-grid deluxe-stats-grid round-pilot-grid">
+                ${rankedPlayers.map((player) => `
                     <article class="stats-pilot deluxe-stats-pilot" style="--accent:${player.color}">
                         <div class="stats-pilot-head">
                             <div>
                                 <p class="eyebrow">Pilot Debrief</p>
                                 <h3>${escapeHtml(player.name)}</h3>
                             </div>
-                            <div class="stats-score-pill">${player.stats.score} pts</div>
+                            <div class="stats-score-pill">${player.id === latestRoundSummary?.winnerId ? 'Winner' : 'Round'}</div>
                         </div>
                         ${buildStatMeter('Round damage', player.stats.damage, maxRoundDamage, player.color, `${player.stats.damage}`)}
-                        ${buildStatMeter('Campaign score', player.stats.score, maxCampaignScore, player.color, `${player.stats.score}`)}
-                        ${buildStatMeter('Damage absorbed', player.stats.totalDamageTaken, maxDamageTaken, player.color, `${player.stats.totalDamageTaken}`)}
+                        ${buildStatMeter('Damage taken', player.stats.damageTaken, maxDamageTaken, player.color, `${player.stats.damageTaken}`)}
+                        ${buildStatMeter('Hits landed', player.stats.hits, maxHits, player.color, `${player.stats.hits}`)}
                         <div class="stats-badge-row">
                             <span class="stats-chip hits">${player.stats.hits} hits</span>
-                            <span class="stats-chip kills">${player.stats.totalKills} kills</span>
-                            <span class="stats-chip wins">${player.stats.roundWins} wins</span>
+                            <span class="stats-chip kills">${player.stats.kills} kills</span>
+                            <span class="stats-chip wins">${player.stats.shots} shots</span>
                         </div>
                         <div class="stats-mini-grid">
                             <div><span>Round taken</span><strong>${player.stats.damageTaken}</strong></div>
-                            <div><span>Total damage</span><strong>${player.stats.totalDamage}</strong></div>
-                            <div><span>Total shots</span><strong>${player.stats.totalShots}</strong></div>
-                            <div><span>MVP pressure</span><strong>${player.stats.totalHits}</strong></div>
+                            <div><span>Round damage</span><strong>${player.stats.damage}</strong></div>
+                            <div><span>Total shots</span><strong>${player.stats.shots}</strong></div>
+                            <div><span>Pressure</span><strong>${player.stats.hits + player.stats.kills}</strong></div>
                         </div>
                     </article>
                 `).join('')}
             </div>
-            <button class="pixel-button primary" data-action="stats-next">${campaignComplete ? 'Finish Campaign' : 'Open Shop'}</button>
+            <button class="pixel-button primary" data-action="stats-next">Open Campaign Report</button>
+        </div>
+    `;
+}
+
+function renderCampaignScreen() {
+    const leaders = [...campaignPlayers].sort((left, right) => right.stats.score - left.stats.score || right.stats.roundWins - left.stats.roundWins || right.stats.totalDamage - left.stats.totalDamage);
+    const maxScore = Math.max(1, ...leaders.map((player) => player.stats.score));
+    const maxWins = Math.max(1, ...leaders.map((player) => player.stats.roundWins));
+    const maxDamage = Math.max(1, ...leaders.map((player) => player.stats.totalDamage));
+    const maxTaken = Math.max(1, ...leaders.map((player) => player.stats.totalDamageTaken));
+    const scoreShare = buildConicChart(leaders.map((player) => ({ color: player.color, value: player.stats.score })));
+    const winShare = buildConicChart(leaders.map((player) => ({ color: player.color, value: player.stats.roundWins })));
+    const accolades = buildCampaignAccolades(leaders);
+
+    intermissionScreen.innerHTML = `
+        <div class="intermission-card stats-card deluxe-stats-card campaign-report-card">
+            <div class="stats-hero-grid campaign-report-grid">
+                <section class="stats-hero-panel campaign-ladder-panel">
+                    <p class="eyebrow">CAMPAIGN LADDER</p>
+                    <h2>Campaign Report</h2>
+                    <div class="ladder-list">
+                        ${leaders.map((player, index) => `
+                            <article class="ladder-row" style="--accent:${player.color}">
+                                <div class="ladder-head">
+                                    <span class="score-rank">${index + 1}</span>
+                                    <strong>${escapeHtml(player.name)}</strong>
+                                    <span>${player.stats.score} pts</span>
+                                </div>
+                                <div class="ladder-track"><span style="width:${Math.max(8, Math.round((player.stats.score / maxScore) * 100))}%"></span></div>
+                            </article>
+                        `).join('')}
+                    </div>
+                </section>
+                <section class="stats-hero-panel campaign-chart-panel">
+                    <p class="eyebrow">Campaign Shape</p>
+                    <div class="stats-dual-charts campaign-dual-charts">
+                        <div class="chart-cluster compact-chart-cluster vertical-chart-cluster">
+                            <p class="eyebrow chart-title">Score Share</p>
+                            <div class="big-chart" style="background:${scoreShare}"></div>
+                        </div>
+                        <div class="chart-cluster compact-chart-cluster vertical-chart-cluster">
+                            <p class="eyebrow chart-title">Round Wins</p>
+                            <div class="big-chart" style="background:${winShare}"></div>
+                        </div>
+                    </div>
+                </section>
+            </div>
+            <section class="accolade-grid">
+                ${accolades.map((accolade) => `
+                    <article class="accolade-card" style="--accent:${accolade.color}">
+                        <p class="eyebrow">${accolade.title}</p>
+                        <strong>${escapeHtml(accolade.name)}</strong>
+                        <span>${accolade.value}</span>
+                    </article>
+                `).join('')}
+            </section>
+            <section class="campaign-table-panel pixel-panel-lite">
+                <p class="eyebrow">Campaign Standings</p>
+                <table class="report-table campaign-table">
+                    <thead>
+                        <tr><th>#</th><th>Pilot</th><th>Score</th><th>Wins</th><th>Damage</th><th>Kills</th><th>Taken</th></tr>
+                    </thead>
+                    <tbody>
+                        ${leaders.map((player, index) => `
+                            <tr>
+                                <td>${index + 1}</td>
+                                <td><span class="table-player" style="--accent:${player.color}">${escapeHtml(player.name)}</span></td>
+                                <td>${player.stats.score}</td>
+                                <td>${player.stats.roundWins}</td>
+                                <td>${player.stats.totalDamage}</td>
+                                <td>${player.stats.totalKills}</td>
+                                <td>${player.stats.totalDamageTaken}</td>
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+            </section>
+            <div class="stats-grid deluxe-stats-grid campaign-player-grid">
+                ${leaders.map((player) => `
+                    <article class="stats-pilot deluxe-stats-pilot" style="--accent:${player.color}">
+                        <div class="stats-pilot-head">
+                            <div>
+                                <p class="eyebrow">Campaign Pilot</p>
+                                <h3>${escapeHtml(player.name)}</h3>
+                            </div>
+                            <div class="stats-score-pill">${player.stats.score} pts</div>
+                        </div>
+                        ${buildStatMeter('Campaign score', player.stats.score, maxScore, player.color, `${player.stats.score}`)}
+                        ${buildStatMeter('Round wins', player.stats.roundWins, maxWins, player.color, `${player.stats.roundWins}`)}
+                        ${buildStatMeter('Total damage', player.stats.totalDamage, maxDamage, player.color, `${player.stats.totalDamage}`)}
+                        ${buildStatMeter('Damage absorbed', player.stats.totalDamageTaken, maxTaken, player.color, `${player.stats.totalDamageTaken}`)}
+                    </article>
+                `).join('')}
+            </div>
+            <button class="pixel-button primary" data-action="campaign-next">${campaignComplete ? 'Finish Campaign' : 'Open Shop'}</button>
         </div>
     `;
 }
 
 function renderShopScreen() {
-    const localIds = getInteractivePlayerIds();
-    const visiblePlayers = campaignPlayers.filter((player) => localIds.has(player.id));
-    const remotePlayers = campaignPlayers.filter((player) => !localIds.has(player.id));
-    const showRemoteRoster = Boolean(network && remotePlayers.length);
+    const focusPlayer = getShopFocusPlayer();
+    const selection = ensureShopSelection(focusPlayer);
+    const selectedWeapon = selection ? WEAPON_DEFINITIONS[selection.weaponType] : null;
+    const ownedAmmo = selection && focusPlayer ? focusPlayer.weapons.find((weapon) => weapon.type === selection.weaponType)?.ammo ?? 0 : 0;
+    const buyPrice = selection ? getWeaponShopPrice(selection.weaponType, currentSettings.weaponCostMultiplier) : null;
+    const sellPrice = selection ? getWeaponSellPrice(selection.weaponType, currentSettings.weaponCostMultiplier) : null;
+    const canBuy = Boolean(focusPlayer && selection?.source === 'market' && !focusPlayer.shopReady && buyPrice !== null && focusPlayer.credits >= buyPrice);
+    const canSell = Boolean(focusPlayer && selection?.source === 'stock' && !focusPlayer.shopReady && sellPrice !== null && ownedAmmo > 0);
 
     intermissionScreen.innerHTML = `
-        <div class="intermission-card shop-card deluxe-shop-card">
-            <div class="shop-hero-panel">
-                <div>
-                    <p class="eyebrow">SHOP + REARM</p>
-                    <h2>Carry-Over Arsenal</h2>
-                    <p class="hero-copy">Weapons carry over. Each pilot receives current points plus ${ROUND_SHOP_BASE_CREDITS} credits after the round. Self-damage never scores, and market prices follow the battle multiplier.</p>
-                </div>
-                <div class="shop-rule-strip">
-                    <span>Cost x${currentSettings.weaponCostMultiplier.toFixed(2)}</span>
-                    <span>${currentSettings.scoring.awardDamage ? `${currentSettings.scoring.damagePointValue} per damage` : 'No damage score'}</span>
-                    <span>${currentSettings.scoring.awardKills ? `${currentSettings.scoring.killPointValue} per kill` : 'No kill bonus'}</span>
-                </div>
-            </div>
-            <div class="shop-layout ${network ? 'online-shop-layout' : 'local-shop-layout'}">
-                <div class="shop-focus-column ${network ? 'solo-focus-column' : 'grid-focus-column'}">
-                    ${visiblePlayers.map((player) => buildShopPlayerPanel(player, true, !network)).join('')}
-                </div>
-                ${showRemoteRoster ? `
-                    <aside class="shop-side-column">
-                        <section class="shop-roster-panel">
-                            <p class="eyebrow">Remote Pilots</p>
-                            <h3>Readiness Board</h3>
-                            <div class="shop-roster-list">
-                                ${campaignPlayers.map((player) => `
-                                    <article class="shop-roster-card ${player.shopReady ? 'ready' : ''}" style="--accent:${player.color}">
-                                        <div>
-                                            <strong>${escapeHtml(player.name)}</strong>
-                                            <span>${player.credits} cr</span>
-                                        </div>
-                                        <span>${player.shopReady ? 'READY' : 'SHOPPING'}</span>
-                                    </article>
-                                `).join('')}
-                            </div>
-                        </section>
-                        ${remotePlayers.map((player) => `
-                            <article class="shop-summary-card" style="--accent:${player.color}">
-                                <div class="shop-summary-head">
-                                    <strong>${escapeHtml(player.name)}</strong>
-                                    <span>${player.credits} cr</span>
+        <div class="intermission-card shop-card deluxe-shop-card tidy-shop-card">
+            <div class="shop-shell ${network ? 'online-shop-shell' : 'local-shop-shell'}">
+                <section class="shop-main-panel">
+                    <div class="shop-header-clean">
+                        <div>
+                            <p class="eyebrow">SHOP</p>
+                            <h2>Carry-Over Arsenal</h2>
+                        </div>
+                        ${focusPlayer ? `<div class="shop-head-meta"><span class="shop-focus-name" style="color:${focusPlayer.color}">${escapeHtml(focusPlayer.name)}</span><span class="shop-credits">${focusPlayer.credits} cr</span></div>` : ''}
+                    </div>
+                    ${focusPlayer ? `
+                        <div class="shop-columns tidy-shop-columns">
+                            <section class="shop-column inventory-column tidy-inventory-column">
+                                <div class="column-head compact-column-head">
+                                    <p class="eyebrow">Stock</p>
+                                    <span>${focusPlayer.shopReady ? 'Locked' : 'Select to inspect'}</span>
                                 </div>
-                                <div class="weapon-summary-line">
-                                    ${player.weapons.filter((weapon) => weapon.ammo !== 0 || weapon.type === 'cannon').map((weapon) => `<span>${WEAPON_DEFINITIONS[weapon.type].glyph} ${weapon.ammo < 0 ? 'INF' : weapon.ammo}</span>`).join('')}
+                                <div class="weapon-list tidy-weapon-list">
+                                    ${focusPlayer.weapons.filter((weapon) => weapon.ammo !== 0 || weapon.type === 'cannon').map((weapon) => `
+                                        <button class="weapon-chip tidy-weapon-chip ${selection?.source === 'stock' && selection.weaponType === weapon.type ? 'selected' : ''}" data-action="select-weapon" data-player-id="${focusPlayer.id}" data-source="stock" data-weapon="${weapon.type}" ${focusPlayer.shopReady ? 'disabled' : ''}>
+                                            <span class="weapon-name">${WEAPON_DEFINITIONS[weapon.type].name}</span>
+                                            <strong>${weapon.ammo < 0 ? 'INF' : weapon.ammo}</strong>
+                                        </button>
+                                    `).join('')}
                                 </div>
-                            </article>
-                        `).join('')}
-                    </aside>
-                ` : ''}
+                            </section>
+                            <section class="shop-column market-column tidy-market-column">
+                                <div class="column-head compact-column-head">
+                                    <p class="eyebrow">Market</p>
+                                    <span>${focusPlayer.shopReady ? 'Locked' : 'Select to inspect'}</span>
+                                </div>
+                                <div class="store-list tidy-store-list">
+                                    ${SHOP_WEAPON_ORDER.map((type) => {
+                                        const price = getWeaponShopPrice(type, currentSettings.weaponCostMultiplier);
+                                        const locked = price === null;
+                                        return `
+                                            <button class="store-item tidy-store-item ${selection?.source === 'market' && selection.weaponType === type ? 'selected' : ''} ${locked ? 'disabled' : ''}" data-action="select-weapon" data-player-id="${focusPlayer.id}" data-source="market" data-weapon="${type}" ${focusPlayer.shopReady || locked ? 'disabled' : ''}>
+                                                <span class="weapon-name">${WEAPON_DEFINITIONS[type].name}</span>
+                                                <strong>${price === null ? 'LOCK' : `${price} cr`}</strong>
+                                            </button>
+                                        `;
+                                    }).join('')}
+                                </div>
+                            </section>
+                            <aside class="shop-detail-panel">
+                                ${selectedWeapon ? `
+                                    <div class="weapon-preview-art" style="--accent:${selectedWeapon.projectileColor}">
+                                        <div class="weapon-preview-core"></div>
+                                        <span>${selectedWeapon.name}</span>
+                                    </div>
+                                    <div class="shop-detail-copy">
+                                        <p class="eyebrow">Weapon Detail</p>
+                                        <h3>${selectedWeapon.name}</h3>
+                                        <p class="weapon-detail-flavor">${selectedWeapon.flavor}</p>
+                                    </div>
+                                    <div class="weapon-detail-stats">
+                                        <div><span>Blast</span><strong>${selectedWeapon.blastRadius}</strong></div>
+                                        <div><span>Damage</span><strong>${selectedWeapon.damage}</strong></div>
+                                        <div><span>Stock</span><strong>${selection?.source === 'stock' ? (ownedAmmo < 0 ? 'INF' : ownedAmmo) : (focusPlayer.weapons.find((weapon) => weapon.type === selectedWeapon.type)?.ammo ?? 0)}</strong></div>
+                                        <div><span>Buy</span><strong>${buyPrice ?? 'N/A'}</strong></div>
+                                        <div><span>Sell</span><strong>${sellPrice ?? 'N/A'}</strong></div>
+                                        <div><span>Source</span><strong>${selection?.source === 'market' ? 'Market' : 'Stock'}</strong></div>
+                                    </div>
+                                    <div class="shop-detail-actions">
+                                        <button class="pixel-button secondary" data-action="buy-selected" ${canBuy ? '' : 'disabled'}>Buy</button>
+                                        <button class="pixel-button ghost" data-action="sell-selected" ${canSell ? '' : 'disabled'}>Sell</button>
+                                    </div>
+                                ` : `
+                                    <div class="empty-shop-detail">
+                                        <p class="eyebrow">Weapon Detail</p>
+                                        <h3>No weapon selected</h3>
+                                    </div>
+                                `}
+                            </aside>
+                        </div>
+                        <div class="shop-footer-actions">
+                            <button class="pixel-button ${focusPlayer.shopReady ? 'secondary' : 'primary'}" data-action="toggle-shop-ready" data-player-id="${focusPlayer.id}">${focusPlayer.shopReady ? 'Unlock Loadout' : 'Lock Loadout'}</button>
+                        </div>
+                    ` : '<p class="hero-copy">No active pilot available for shopping.</p>'}
+                </section>
+                <aside class="shop-side-column tidy-shop-sidebar">
+                    <section class="shop-roster-panel">
+                        <p class="eyebrow">${network ? 'Lobby Status' : 'Shopping Order'}</p>
+                        <div class="shop-roster-list">
+                            ${campaignPlayers.map((player, index) => `
+                                <article class="shop-roster-card ${player.shopReady ? 'ready' : ''} ${!network && focusPlayer?.id === player.id ? 'active' : ''}" style="--accent:${player.color}">
+                                    <div>
+                                        <strong>${escapeHtml(player.name)}</strong>
+                                        <span>${!network ? `Seat ${index + 1}` : (player.shopReady ? 'Ready' : 'Shopping')}</span>
+                                    </div>
+                                    <span>${player.shopReady ? 'READY' : (!network && focusPlayer?.id === player.id ? 'UP NOW' : 'WAIT')}</span>
+                                </article>
+                            `).join('')}
+                        </div>
+                    </section>
+                </aside>
             </div>
         </div>
     `;
 }
 
-function buildShopPlayerPanel(player: CampaignPlayer, interactive: boolean, localLayout: boolean) {
-    return `
-        <article class="shop-pilot deluxe-shop-pilot featured-shop-pilot ${localLayout ? 'local-shop-pilot' : 'online-shop-pilot'}" style="--accent:${player.color}">
-            <div class="shop-head">
-                <div>
-                    <p class="eyebrow">Pilot Market</p>
-                    <h3>${escapeHtml(player.name)}</h3>
-                </div>
-                <div class="shop-head-meta">
-                    <span class="shop-credits">${player.credits} cr</span>
-                    <span class="shop-state ${player.shopReady ? 'ready' : ''}">${player.shopReady ? 'Ready' : 'Shopping'}</span>
-                </div>
-            </div>
-            <div class="shop-columns">
-                <section class="shop-column inventory-column">
-                    <div class="column-head">
-                        <p class="eyebrow">Stock</p>
-                        <span>Sell reserves</span>
-                    </div>
-                    <div class="weapon-list weapon-stock-list roomy-weapon-list">
-                        ${player.weapons.filter((weapon) => weapon.ammo !== 0 || weapon.type === 'cannon').map((weapon) => buildWeaponInventoryRow(player.id, weapon.type, weapon.ammo, interactive, player.shopReady)).join('')}
-                    </div>
-                </section>
-                <section class="shop-column market-column">
-                    <div class="column-head">
-                        <p class="eyebrow">Market</p>
-                        <span>Buy single warheads</span>
-                    </div>
-                    <div class="store-list deluxe-store-list roomy-store-list">
-                        ${SHOP_WEAPON_ORDER.map((type) => buildShopMarketRow(player, type, interactive)).join('')}
-                    </div>
-                </section>
-            </div>
-            <button class="pixel-button ${player.shopReady ? 'secondary' : 'primary'}" data-action="toggle-shop-ready" data-player-id="${player.id}" ${!interactive ? 'disabled' : ''}>${player.shopReady ? 'Ready' : 'Ready Up'}</button>
-        </article>
-    `;
+function getRoundRankings(players: RoundSummary['players'], winnerId: string | null) {
+    return [...players].sort((left, right) => {
+        if (winnerId && left.id === winnerId) return -1;
+        if (winnerId && right.id === winnerId) return 1;
+        return right.stats.damage - left.stats.damage
+            || right.stats.kills - left.stats.kills
+            || right.stats.hits - left.stats.hits
+            || left.stats.damageTaken - right.stats.damageTaken;
+    });
 }
 
-function buildWeaponInventoryRow(playerId: string, type: WeaponType, ammo: number, interactive: boolean, shopReady: boolean) {
-    const definition = WEAPON_DEFINITIONS[type];
-    const sellPrice = getWeaponSellPrice(type, currentSettings.weaponCostMultiplier);
-    const canSell = interactive && !shopReady && ammo > 0 && sellPrice !== null;
-    return `
-        <div class="weapon-chip fancy-weapon-chip weapon-stock-row ${canSell ? 'sellable' : ''}">
-            <span class="weapon-copy">
-                <strong>${definition.glyph} ${definition.name}</strong>
-                <small>${definition.flavor}</small>
-            </span>
-            <div class="weapon-stock-actions">
-                <strong>${ammo < 0 ? 'INF' : ammo}</strong>
-                ${canSell ? `<button class="mini-shop-button" data-action="sell" data-player-id="${playerId}" data-weapon="${type}">Sell +${sellPrice}</button>` : ''}
-            </div>
-        </div>
-    `;
+function buildRoundAccolades(players: RoundSummary['players'], winnerId: string | null) {
+    const winner = players.find((player) => player.id === winnerId) ?? players[0];
+    const topDamage = [...players].sort((left, right) => right.stats.damage - left.stats.damage)[0];
+    const topKills = [...players].sort((left, right) => right.stats.kills - left.stats.kills)[0];
+    const topTaken = [...players].sort((left, right) => right.stats.damageTaken - left.stats.damageTaken)[0];
+    const topShots = [...players].sort((left, right) => right.stats.shots - left.stats.shots)[0];
+    return [
+        { title: 'Winner', name: winner?.name ?? 'No one', value: winner ? 'Closed the round' : 'No winner', color: winner?.color ?? '#fff4d7' },
+        { title: 'Most Damage', name: topDamage?.name ?? 'No one', value: `${topDamage?.stats.damage ?? 0} damage`, color: topDamage?.color ?? '#fff4d7' },
+        { title: 'Most Kills', name: topKills?.name ?? 'No one', value: `${topKills?.stats.kills ?? 0} kills`, color: topKills?.color ?? '#fff4d7' },
+        { title: 'Most Damage Taken', name: topTaken?.name ?? 'No one', value: `${topTaken?.stats.damageTaken ?? 0} taken`, color: topTaken?.color ?? '#fff4d7' },
+        { title: 'Longest Barrage', name: topShots?.name ?? 'No one', value: `${topShots?.stats.shots ?? 0} shots`, color: topShots?.color ?? '#fff4d7' }
+    ];
 }
 
-function buildShopMarketRow(player: CampaignPlayer, type: WeaponType, interactive: boolean) {
-    const definition = WEAPON_DEFINITIONS[type];
-    const price = getWeaponShopPrice(type, currentSettings.weaponCostMultiplier);
-    const disabled = !interactive || player.shopReady || price === null || player.credits < price;
-    return `
-        <button class="store-item deluxe-store-item ${disabled ? 'disabled' : ''}" data-action="buy" data-player-id="${player.id}" data-weapon="${type}" ${disabled ? 'disabled' : ''}>
-            <span class="store-copy">
-                <strong>${definition.glyph} ${definition.name}</strong>
-                <small>${definition.flavor}</small>
-            </span>
-            <span class="store-meta">
-                <strong>${price ?? 'LOCK'}</strong>
-                <small>${price === null ? 'Loadout only' : 'buy 1'}</small>
-            </span>
-        </button>
-    `;
+function buildCampaignAccolades(players: CampaignPlayer[]) {
+    const leader = players[0];
+    const mostWins = [...players].sort((left, right) => right.stats.roundWins - left.stats.roundWins)[0];
+    const mostDamage = [...players].sort((left, right) => right.stats.totalDamage - left.stats.totalDamage)[0];
+    const mostKills = [...players].sort((left, right) => right.stats.totalKills - left.stats.totalKills)[0];
+    const mostTaken = [...players].sort((left, right) => right.stats.totalDamageTaken - left.stats.totalDamageTaken)[0];
+    return [
+        { title: 'Campaign Leader', name: leader?.name ?? 'No one', value: `${leader?.stats.score ?? 0} pts`, color: leader?.color ?? '#fff4d7' },
+        { title: 'Most Wins', name: mostWins?.name ?? 'No one', value: `${mostWins?.stats.roundWins ?? 0} wins`, color: mostWins?.color ?? '#fff4d7' },
+        { title: 'Most Damage', name: mostDamage?.name ?? 'No one', value: `${mostDamage?.stats.totalDamage ?? 0} damage`, color: mostDamage?.color ?? '#fff4d7' },
+        { title: 'Most Kills', name: mostKills?.name ?? 'No one', value: `${mostKills?.stats.totalKills ?? 0} kills`, color: mostKills?.color ?? '#fff4d7' },
+        { title: 'Most Punished', name: mostTaken?.name ?? 'No one', value: `${mostTaken?.stats.totalDamageTaken ?? 0} taken`, color: mostTaken?.color ?? '#fff4d7' }
+    ];
 }
 
 function buildConicChart(entries: Array<{ color: string; value: number }>) {
@@ -1320,6 +1590,8 @@ function leaveMatch() {
     lobbyMode = 'idle';
     campaignPlayers = [];
     latestRoundSummary = null;
+    localShopCursor = 0;
+    shopSelection = null;
     intermissionStage = 'hidden';
     renderIntermission();
     syncMatchSettingsAvailability();
@@ -1355,26 +1627,26 @@ function syncMatchSettingsAvailability() {
     scoringPlacementToggle.disabled = disableSettings;
     scoringFirstValue.disabled = disableSettings || !scoringPlacementToggle.checked;
     scoringSecondValue.disabled = disableSettings || !scoringPlacementToggle.checked;
+    scoringThirdValue.disabled = disableSettings || !scoringPlacementToggle.checked;
+    roundOrderSelect.disabled = disableSettings;
     terrainCollapseInput.disabled = disableSettings;
 }
 
 function updateGameHud(snapshot: HudSnapshot) {
     latestHudSnapshot = snapshot;
-    hudTurn.textContent = snapshot.turnLabel;
     hudPilot.textContent = snapshot.pilotLabel;
     hudPilot.style.color = snapshot.turnColor;
     hudHealthFill.style.width = `${Math.max(0, Math.min(100, snapshot.healthPercent * 100))}%`;
     hudHealthFill.style.background = snapshot.turnColor;
-    hudRound.textContent = snapshot.roundLabel;
-    hudWeaponTitle.textContent = snapshot.weaponLabel;
-    hudWeapon.textContent = snapshot.weaponDetail;
+    const ammoDetail = snapshot.weaponLabel.includes('|') ? snapshot.weaponLabel.split('|').slice(1).join('|').trim() : snapshot.weaponLabel;
+    const weaponStats = snapshot.weaponDetail.includes('|') ? snapshot.weaponDetail.split('|').slice(1).join('|').trim() : snapshot.weaponDetail;
+    hudWeapon.textContent = ammoDetail && weaponStats ? ammoDetail + ' | ' + weaponStats : snapshot.weaponDetail;
     hudPowerLabel.textContent = snapshot.powerLabel;
     hudPowerFill.style.width = `${Math.max(0, Math.min(100, snapshot.powerPercent * 100))}%`;
     hudPowerFill.style.background = snapshot.turnColor;
     hudAngle.textContent = snapshot.angleLabel;
     hudWind.textContent = snapshot.windLabel;
-    hudWinner.textContent = snapshot.winnerLabel || 'No winner yet';
-    hudCampaign.textContent = snapshot.campaignLabel;
+    hudCampaign.textContent = snapshot.roundLabel;
     hudHint.textContent = snapshot.hintLabel;
 
     const weaponOptionsMarkup = snapshot.weaponOptions.map((option) => `<option value="${option.index}" ${option.disabled ? 'disabled' : ''}>${option.label}</option>`).join('');
@@ -1393,14 +1665,9 @@ function renderBoard(snapshot: HudSnapshot) {
         ? right.damage - left.damage || right.kills - left.kills || right.score - left.score
         : right.score - left.score || right.roundWins - left.roundWins || right.totalDamage - left.totalDamage);
 
-    scoreChart.style.background = buildConicChart(entries.map((entry) => ({
-        color: entry.color,
-        value: activeBoardTab === 'battle' ? entry.damage : entry.score
-    })));
-
     const maxCampaignScore = Math.max(1, ...entries.map((entry) => entry.score));
     scoreboard.innerHTML = entries.map((entry, index) => `
-        <article class="score-card" style="--accent:${entry.color}">
+        <article class="score-card compact-score-card" style="--accent:${entry.color}">
             <div class="score-topline">
                 <span class="score-rank">${index + 1}</span>
                 <span class="score-name">${escapeHtml(entry.name)}</span>
@@ -1422,28 +1689,23 @@ function syncBoardTabs() {
 
 function resetHud() {
     latestHudSnapshot = null;
-    hudTurn.textContent = 'Stand by';
     hudPilot.textContent = 'No active pilot';
     hudPilot.style.color = '#fff4d7';
     hudHealthFill.style.width = '100%';
     hudHealthFill.style.background = '#9de64e';
-    hudRound.textContent = 'Round status';
-    hudWeaponTitle.textContent = 'Weapon Ready';
-    hudWeapon.textContent = 'Blast | Damage';
+    hudWeapon.textContent = 'Ammo | Blast | Damage';
     hudPowerLabel.textContent = 'Charge';
     hudPowerFill.style.width = '0%';
     hudPowerFill.style.background = '#ff7a59';
     hudAngle.textContent = 'Angle';
     hudWind.textContent = 'Wind';
-    hudWinner.textContent = 'No winner yet';
-    hudCampaign.textContent = 'Campaign status';
+    hudCampaign.textContent = 'Round status';
     hudHint.textContent = 'Arrow left and right aim, arrow up and down change power, and space fires.';
     weaponSelect.innerHTML = '<option>Weapon</option>';
     weaponSelect.disabled = true;
     activeBoardTab = 'battle';
     syncBoardTabs();
-    scoreChart.style.background = 'conic-gradient(#3a2a46 0deg 360deg)';
-    scoreboard.innerHTML = '<p class="hud-subline">Damage and campaign tabs will update here once the battle starts.</p>';
+    scoreboard.innerHTML = '<p class="hud-subline">Battle and campaign standings will update here once the battle starts.</p>';
 }
 
 function toCampaignPlayer(player: LobbyPlayer): CampaignPlayer {
@@ -1500,6 +1762,26 @@ function escapeHtml(value: string) {
 function escapeAttribute(value: string) {
     return escapeHtml(value);
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 

@@ -6,6 +6,8 @@ export type WindMode = 'variable' | 'constant' | 'disabled';
 
 export type PowerRule = 'static' | 'health_linked';
 
+export type RoundOrderMode = 'player_number' | 'random' | 'winning_order' | 'reverse_winning_order';
+
 export interface ScoringSettings {
     awardDamage: boolean;
     damagePointValue: number;
@@ -14,6 +16,7 @@ export interface ScoringSettings {
     awardPlacement: boolean;
     firstPlacePoints: number;
     secondPlacePoints: number;
+    thirdPlacePoints: number;
 }
 
 export interface MatchSettings {
@@ -24,6 +27,7 @@ export interface MatchSettings {
     rounds: number;
     scoring: ScoringSettings;
     weaponCostMultiplier: number;
+    roundOrder: RoundOrderMode;
 }
 
 export interface LobbyPlayer {
