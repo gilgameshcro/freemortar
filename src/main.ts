@@ -34,7 +34,7 @@ import type {
 } from './types';
 
 type LobbyMode = 'idle' | 'online-host' | 'online-client' | 'local';
-type IntermissionStage = 'hidden' | 'victory' | 'stats' | 'campaign' | 'shop';
+type IntermissionStage = 'hidden' | 'victory' | 'stats' | 'ceremony' | 'campaign' | 'shop';
 type LocalProfile = { name: string; color: string; loadout: LoadoutId };
 type ShopSelection = { playerId: string; weaponType: WeaponType; source: 'market' | 'stock' };
 
@@ -67,6 +67,23 @@ type CampaignPlayer = {
     stats: PlayerStatsSnapshot;
 };
 
+type ReportAccolade = {
+    title: string;
+    name: string;
+    value: string;
+    color: string;
+    icon: string;
+    playerId: string | null;
+    roundNumber?: number;
+};
+
+type StatBearingPlayer = {
+    id: string;
+    name: string;
+    color: string;
+    stats: PlayerStatsSnapshot;
+};
+
 const DEFAULT_SCORING: ScoringSettings = {
     awardDamage: true,
     damagePointValue: 1,
@@ -88,7 +105,7 @@ const DEFAULT_SETTINGS: MatchSettings = {
     rounds: 1,
     scoring: { ...DEFAULT_SCORING },
     weaponCostMultiplier: 1,
-    roundOrder: 'player_number'
+    roundOrder: 'reverse_winning_order'
 };
 
 const app = document.getElementById('app');
@@ -338,7 +355,7 @@ app.innerHTML = `
                 <section class="pixel-panel hud-card conditions-card compact-conditions-card">
                     <div class="wind-readout">
                         <span id="hudWind" class="wind-label">Wind 0/10 0</span>
-                        <span id="hudWindArrow" class="wind-arrow">•</span>
+                        <span id="hudWindArrow" class="wind-arrow">ï¿½</span>
                     </div>
                     <div class="wind-meter"><span id="hudWindFill"></span></div>
                     <p id="hudCampaign" class="hud-subline">Round status</p>
@@ -447,6 +464,7 @@ let currentSettings: MatchSettings = { ...DEFAULT_SETTINGS, terrainThemes: [...D
 let currentRound = 1;
 let intermissionStage: IntermissionStage = 'hidden';
 let latestRoundSummary: RoundSummary | null = null;
+let campaignRoundHistory: RoundSummary[] = [];
 let campaignComplete = false;
 let startTimer: number | null = null;
 let shopStartTimer: number | null = null;
@@ -928,6 +946,7 @@ function startCampaign(players: CampaignPlayer[], activeNetwork: Network | null)
     currentRound = 1;
     campaignComplete = false;
     latestRoundSummary = null;
+    campaignRoundHistory = [];
     localShopCursor = 0;
     shopSelection = null;
     intermissionStage = 'hidden';
@@ -999,6 +1018,7 @@ function handleRoundEnd(summary: RoundSummary) {
     game?.stop();
     game = null;
     latestRoundSummary = summary;
+    campaignRoundHistory = [...campaignRoundHistory, cloneRoundSummary(summary)];
     currentRound = summary.roundNumber;
     campaignComplete = currentRound >= currentSettings.rounds;
     localShopCursor = 0;
@@ -1101,6 +1121,11 @@ function handleIntermissionClick(event: MouseEvent) {
         return;
     }
     if (action === 'stats-next') {
+        intermissionStage = campaignComplete ? 'ceremony' : 'campaign';
+        renderIntermission();
+        return;
+    }
+    if (action === 'ceremony-next') {
         intermissionStage = 'campaign';
         renderIntermission();
         return;
@@ -1355,13 +1380,16 @@ function renderIntermission() {
         renderStatsScreen();
         return;
     }
+    if (intermissionStage === 'ceremony') {
+        renderCeremonyScreen();
+        return;
+    }
     if (intermissionStage === 'campaign') {
         renderCampaignScreen();
         return;
     }
     renderShopScreen();
 }
-
 function renderVictoryScreen() {
     if (!latestRoundSummary) return;
     const winner = latestRoundSummary.players.find((player) => player.id === latestRoundSummary?.winnerId) ?? null;
@@ -1380,17 +1408,18 @@ function renderStatsScreen() {
     if (!latestRoundSummary) return;
     const rankedPlayers = getRoundRankings(latestRoundSummary.players, latestRoundSummary.winnerId);
     const damageChart = buildConicChart(rankedPlayers.map((player) => ({ color: player.color, value: player.stats.damage })));
+    const accolades = buildRoundAccolades(rankedPlayers, latestRoundSummary.winnerId);
     const maxRoundDamage = Math.max(1, ...rankedPlayers.map((player) => player.stats.damage));
     const maxDamageTaken = Math.max(1, ...rankedPlayers.map((player) => player.stats.damageTaken));
     const maxHits = Math.max(1, ...rankedPlayers.map((player) => player.stats.hits));
-    const accolades = buildRoundAccolades(rankedPlayers, latestRoundSummary.winnerId);
 
     intermissionScreen.innerHTML = `
-        <div class="intermission-card stats-card deluxe-stats-card">
+        <div class="intermission-card stats-card deluxe-stats-card report-shell round-report-shell">
             <div class="stats-hero-grid round-report-grid">
                 <section class="stats-hero-panel round-overview-panel">
                     <p class="eyebrow">DEBRIEF</p>
                     <h2>Round ${currentRound} Report</h2>
+                    <p class="hero-copy compact-hero-copy">Damage, hits, kills, punishment, and spend are staged into one shared report before the next drop.</p>
                     <div class="round-chart-stack">
                         <div>
                             <p class="eyebrow chart-title">Round Damage</p>
@@ -1408,10 +1437,10 @@ function renderStatsScreen() {
                     </div>
                 </section>
                 <section class="stats-hero-panel round-ranking-panel">
-                    <p class="eyebrow">Round Ranking</p>
+                    <p class="eyebrow">Final Ranking</p>
                     <table class="report-table">
                         <thead>
-                            <tr><th>#</th><th>Pilot</th><th>DMG</th><th>KO</th><th>Hits</th><th>Taken</th></tr>
+                            <tr><th>#</th><th>Pilot</th><th>DMG</th><th>Hits</th><th>KO</th><th>Spent</th></tr>
                         </thead>
                         <tbody>
                             ${rankedPlayers.map((player, index) => `
@@ -1419,52 +1448,91 @@ function renderStatsScreen() {
                                     <td>${index + 1}</td>
                                     <td><span class="table-player" style="--accent:${player.color}">${escapeHtml(player.name)}${player.id === latestRoundSummary?.winnerId ? ' <em>WIN</em>' : ''}</span></td>
                                     <td>${player.stats.damage}</td>
-                                    <td>${player.stats.kills}</td>
                                     <td>${player.stats.hits}</td>
-                                    <td>${player.stats.damageTaken}</td>
+                                    <td>${player.stats.kills}</td>
+                                    <td>${player.stats.spent}</td>
                                 </tr>
                             `).join('')}
                         </tbody>
                     </table>
                 </section>
             </div>
-            <section class="accolade-grid">
-                ${accolades.map((accolade) => `
-                    <article class="accolade-card" style="--accent:${accolade.color}">
-                        <p class="eyebrow">${accolade.title}</p>
-                        <strong>${escapeHtml(accolade.name)}</strong>
-                        <span>${accolade.value}</span>
+            ${renderAnimatedAccolades(accolades, 'round-accolades')}
+            <section class="metric-grid report-metric-grid">
+                ${renderMetricTable('Round Damage', rankedPlayers, (player) => player.stats.damage, (value) => `${value}`)}
+                ${renderMetricTable('Damage Taken', rankedPlayers, (player) => player.stats.damageTaken, (value) => `${value}`)}
+                ${renderMetricTable('Hits Landed', rankedPlayers, (player) => player.stats.hits, (value) => `${value}`)}
+                ${renderMetricTable('Total Kills', rankedPlayers, (player) => player.stats.kills, (value) => `${value}`)}
+            </section>
+            <details class="pilot-debrief-toggle">
+                <summary>Expand pilot debrief</summary>
+                <div class="stats-grid deluxe-stats-grid pilot-debrief-grid">
+                    ${rankedPlayers.map((player) => `
+                        <article class="stats-pilot deluxe-stats-pilot compact-pilot-card" style="--accent:${player.color}">
+                            <div class="stats-pilot-head">
+                                <div>
+                                    <p class="eyebrow">Pilot Debrief</p>
+                                    <h3>${escapeHtml(player.name)}</h3>
+                                </div>
+                                <div class="stats-score-pill">${player.id === latestRoundSummary?.winnerId ? 'Winner' : 'Round'}</div>
+                            </div>
+                            ${buildStatMeter('Damage', player.stats.damage, maxRoundDamage, player.color, `${player.stats.damage}`)}
+                            ${buildStatMeter('Taken', player.stats.damageTaken, maxDamageTaken, player.color, `${player.stats.damageTaken}`)}
+                            ${buildStatMeter('Hits', player.stats.hits, maxHits, player.color, `${player.stats.hits}`)}
+                            <div class="stats-badge-row compact-badges">
+                                <span class="stats-chip hits">${player.stats.hits} hits</span>
+                                <span class="stats-chip kills">${player.stats.kills} kills</span>
+                                <span class="stats-chip wins">${player.stats.spent} spent</span>
+                            </div>
+                        </article>
+                    `).join('')}
+                </div>
+            </details>
+            <button class="pixel-button primary" data-action="stats-next">${campaignComplete ? 'Open Award Ceremony' : 'Open Campaign Report'}</button>
+        </div>
+    `;
+}
+
+function renderCeremonyScreen() {
+    const leaders = [...campaignPlayers].sort((left, right) => right.stats.score - left.stats.score || right.stats.roundWins - left.stats.roundWins || right.stats.totalDamage - left.stats.totalDamage);
+    const winner = leaders[0] ?? null;
+    const podium = [leaders[1], leaders[0], leaders[2]].filter(Boolean) as CampaignPlayer[];
+    const accolades = buildCampaignAccolades(leaders);
+    const highlights = buildCampaignCeremonyHighlights(campaignRoundHistory);
+
+    intermissionScreen.innerHTML = `
+        <div class="intermission-card stats-card deluxe-stats-card ceremony-card report-shell">
+            <section class="ceremony-hero staged-card" style="--delay:0ms; --accent:${winner?.color ?? '#fff4d7'}">
+                <p class="eyebrow">CAMPAIGN COMPLETE</p>
+                <h2>${escapeHtml(winner?.name ?? 'No one')} Claims The Crown</h2>
+                <p class="hero-copy compact-hero-copy">The campaign closes with a final ceremony. Podium finishers rise, campaign honors lock in, and the battlefield legends are written into the ledger.</p>
+            </section>
+            <section class="ceremony-podium-grid">
+                ${podium.map((player, index) => {
+                    const place = index === 1 ? 1 : index === 0 ? 2 : 3;
+                    const delay = 120 + index * 140;
+                    return `
+                        <article class="ceremony-podium place-${place} staged-card" style="--accent:${player.color}; --delay:${delay}ms">
+                            <span class="podium-rank">${place}</span>
+                            <strong>${escapeHtml(player.name)}</strong>
+                            <span>${player.stats.score} score</span>
+                            <small>${player.stats.roundWins} wins | ${player.stats.totalDamage} dmg</small>
+                        </article>
+                    `;
+                }).join('')}
+            </section>
+            ${renderAnimatedAccolades(accolades, 'ceremony-accolades')}
+            <section class="ceremony-highlight-grid">
+                ${highlights.map((highlight, index) => `
+                    <article class="ceremony-highlight-card staged-card" style="--accent:${highlight.color}; --delay:${420 + index * 120}ms">
+                        <span class="accolade-icon">${highlight.icon}</span>
+                        <p class="eyebrow">${highlight.title}</p>
+                        <strong>${escapeHtml(highlight.name)}</strong>
+                        <span>${highlight.value}</span>
                     </article>
                 `).join('')}
             </section>
-            <div class="stats-grid deluxe-stats-grid round-pilot-grid">
-                ${rankedPlayers.map((player) => `
-                    <article class="stats-pilot deluxe-stats-pilot" style="--accent:${player.color}">
-                        <div class="stats-pilot-head">
-                            <div>
-                                <p class="eyebrow">Pilot Debrief</p>
-                                <h3>${escapeHtml(player.name)}</h3>
-                            </div>
-                            <div class="stats-score-pill">${player.id === latestRoundSummary?.winnerId ? 'Winner' : 'Round'}</div>
-                        </div>
-                        ${buildStatMeter('Round damage', player.stats.damage, maxRoundDamage, player.color, `${player.stats.damage}`)}
-                        ${buildStatMeter('Damage taken', player.stats.damageTaken, maxDamageTaken, player.color, `${player.stats.damageTaken}`)}
-                        ${buildStatMeter('Hits landed', player.stats.hits, maxHits, player.color, `${player.stats.hits}`)}
-                        <div class="stats-badge-row">
-                            <span class="stats-chip hits">${player.stats.hits} hits</span>
-                            <span class="stats-chip kills">${player.stats.kills} kills</span>
-                            <span class="stats-chip wins">${player.stats.shots} shots</span>
-                        </div>
-                        <div class="stats-mini-grid">
-                            <div><span>Round taken</span><strong>${player.stats.damageTaken}</strong></div>
-                            <div><span>Round damage</span><strong>${player.stats.damage}</strong></div>
-                            <div><span>Total shots</span><strong>${player.stats.shots}</strong></div>
-                            <div><span>Pressure</span><strong>${player.stats.hits + player.stats.kills}</strong></div>
-                        </div>
-                    </article>
-                `).join('')}
-            </div>
-            <button class="pixel-button primary" data-action="stats-next">Open Campaign Report</button>
+            <button class="pixel-button primary" data-action="ceremony-next">Open Final Campaign Report</button>
         </div>
     `;
 }
@@ -1472,98 +1540,65 @@ function renderStatsScreen() {
 function renderCampaignScreen() {
     const leaders = [...campaignPlayers].sort((left, right) => right.stats.score - left.stats.score || right.stats.roundWins - left.stats.roundWins || right.stats.totalDamage - left.stats.totalDamage);
     const maxScore = Math.max(1, ...leaders.map((player) => player.stats.score));
-    const maxWins = Math.max(1, ...leaders.map((player) => player.stats.roundWins));
-    const maxDamage = Math.max(1, ...leaders.map((player) => player.stats.totalDamage));
-    const maxTaken = Math.max(1, ...leaders.map((player) => player.stats.totalDamageTaken));
-    const scoreShare = buildConicChart(leaders.map((player) => ({ color: player.color, value: player.stats.score })));
-    const winShare = buildConicChart(leaders.map((player) => ({ color: player.color, value: player.stats.roundWins })));
     const accolades = buildCampaignAccolades(leaders);
+    const galleryAwards = buildCampaignAwardGallery(campaignRoundHistory);
 
     intermissionScreen.innerHTML = `
-        <div class="intermission-card stats-card deluxe-stats-card campaign-report-card">
-            <div class="stats-hero-grid campaign-report-grid">
+        <div class="intermission-card stats-card deluxe-stats-card campaign-report-card report-shell">
+            <div class="stats-hero-grid campaign-report-grid campaign-report-top">
                 <section class="stats-hero-panel campaign-ladder-panel">
                     <p class="eyebrow">CAMPAIGN LADDER</p>
                     <h2>Campaign Report</h2>
-                    <div class="ladder-list">
-                        ${leaders.map((player, index) => `
-                            <article class="ladder-row" style="--accent:${player.color}">
+                    <div class="ladder-list animated-ladder-list">
+                        ${leaders.map((player, index, array) => `
+                            <article class="ladder-row staged-row" style="--accent:${player.color}; --delay:${(array.length - index - 1) * 120}ms">
                                 <div class="ladder-head">
                                     <span class="score-rank">${index + 1}</span>
                                     <strong>${escapeHtml(player.name)}</strong>
-                                    <span>${player.stats.score} pts</span>
+                                    <span>${player.stats.score}</span>
                                 </div>
                                 <div class="ladder-track"><span style="width:${Math.max(8, Math.round((player.stats.score / maxScore) * 100))}%"></span></div>
                             </article>
                         `).join('')}
                     </div>
                 </section>
-                <section class="stats-hero-panel campaign-chart-panel">
-                    <p class="eyebrow">Campaign Shape</p>
-                    <div class="stats-dual-charts campaign-dual-charts">
-                        <div class="chart-cluster compact-chart-cluster vertical-chart-cluster">
-                            <p class="eyebrow chart-title">Score Share</p>
-                            <div class="big-chart" style="background:${scoreShare}"></div>
-                        </div>
-                        <div class="chart-cluster compact-chart-cluster vertical-chart-cluster">
-                            <p class="eyebrow chart-title">Round Wins</p>
-                            <div class="big-chart" style="background:${winShare}"></div>
-                        </div>
+                <section class="stats-hero-panel campaign-accolade-side">
+                    <p class="eyebrow">Campaign Accolades</p>
+                    <div class="accolade-grid campaign-accolades compact-accolades">
+                        ${accolades.map((accolade, index) => `
+                            <article class="accolade-card staged-card" style="--accent:${accolade.color}; --delay:${index * 120}ms">
+                                <span class="accolade-icon">${accolade.icon}</span>
+                                <p class="eyebrow">${accolade.title}</p>
+                                <strong>${escapeHtml(accolade.name)}</strong>
+                                <span>${accolade.value}</span>
+                            </article>
+                        `).join('')}
                     </div>
                 </section>
             </div>
-            <section class="accolade-grid">
-                ${accolades.map((accolade) => `
-                    <article class="accolade-card" style="--accent:${accolade.color}">
-                        <p class="eyebrow">${accolade.title}</p>
-                        <strong>${escapeHtml(accolade.name)}</strong>
-                        <span>${accolade.value}</span>
-                    </article>
-                `).join('')}
+            <section class="metric-grid report-metric-grid campaign-metric-grid centered-metric-grid">
+                ${renderMetricTable('Round Wins', leaders, (player) => player.stats.roundWins, (value) => `${value}`)}
+                ${renderMetricTable('Total Damage', leaders, (player) => player.stats.totalDamage, (value) => `${value}`)}
+                ${renderMetricTable('Damage Taken', leaders, (player) => player.stats.totalDamageTaken, (value) => `${value}`)}
+                ${renderMetricTable('Hits Landed', leaders, (player) => player.stats.totalHits, (value) => `${value}`)}
+                ${renderMetricTable('Total Kills', leaders, (player) => player.stats.totalKills, (value) => `${value}`)}
+                ${renderMetricTable('Biggest Spend', leaders, (player) => player.stats.totalSpent, (value) => `${value}`)}
             </section>
-            <section class="campaign-table-panel pixel-panel-lite">
-                <p class="eyebrow">Campaign Standings</p>
-                <table class="report-table campaign-table">
-                    <thead>
-                        <tr><th>#</th><th>Pilot</th><th>Score</th><th>Wins</th><th>Damage</th><th>Kills</th><th>Taken</th></tr>
-                    </thead>
-                    <tbody>
-                        ${leaders.map((player, index) => `
-                            <tr>
-                                <td>${index + 1}</td>
-                                <td><span class="table-player" style="--accent:${player.color}">${escapeHtml(player.name)}</span></td>
-                                <td>${player.stats.score}</td>
-                                <td>${player.stats.roundWins}</td>
-                                <td>${player.stats.totalDamage}</td>
-                                <td>${player.stats.totalKills}</td>
-                                <td>${player.stats.totalDamageTaken}</td>
-                            </tr>
-                        `).join('')}
-                    </tbody>
-                </table>
+            <section class="pixel-panel-lite accolade-gallery-panel campaign-award-gallery-panel">
+                <div class="section-head compact-section-head">
+                    <div>
+                        <p class="eyebrow">Accolade Gallery</p>
+                        <h3>Campaign honors by pilot</h3>
+                    </div>
+                </div>
+                <div class="accolade-gallery-grid compact-gallery-grid">
+                    ${renderCampaignAwardGallery(leaders, galleryAwards)}
+                </div>
             </section>
-            <div class="stats-grid deluxe-stats-grid campaign-player-grid">
-                ${leaders.map((player) => `
-                    <article class="stats-pilot deluxe-stats-pilot" style="--accent:${player.color}">
-                        <div class="stats-pilot-head">
-                            <div>
-                                <p class="eyebrow">Campaign Pilot</p>
-                                <h3>${escapeHtml(player.name)}</h3>
-                            </div>
-                            <div class="stats-score-pill">${player.stats.score} pts</div>
-                        </div>
-                        ${buildStatMeter('Campaign score', player.stats.score, maxScore, player.color, `${player.stats.score}`)}
-                        ${buildStatMeter('Round wins', player.stats.roundWins, maxWins, player.color, `${player.stats.roundWins}`)}
-                        ${buildStatMeter('Total damage', player.stats.totalDamage, maxDamage, player.color, `${player.stats.totalDamage}`)}
-                        ${buildStatMeter('Damage absorbed', player.stats.totalDamageTaken, maxTaken, player.color, `${player.stats.totalDamageTaken}`)}
-                    </article>
-                `).join('')}
-            </div>
             <button class="pixel-button primary" data-action="campaign-next">${campaignComplete ? 'Finish Campaign' : 'Open Shop'}</button>
         </div>
     `;
 }
-
 function captureShopScrollState() {
     const stockList = intermissionScreen.querySelector<HTMLElement>('.tidy-weapon-list');
     const marketList = intermissionScreen.querySelector<HTMLElement>('.tidy-store-list');
@@ -1589,6 +1624,11 @@ function renderShopScreen() {
     const ownedAmmo = selection && focusPlayer ? focusPlayer.weapons.find((weapon) => weapon.type === selection.weaponType)?.ammo ?? 0 : 0;
     const buyPrice = selection ? getWeaponShopPrice(selection.weaponType, currentSettings.weaponCostMultiplier) : null;
     const sellPrice = selection ? getWeaponSellPrice(selection.weaponType, currentSettings.weaponCostMultiplier) : null;
+    const maxShopDamage = Math.max(1, ...SHOP_WEAPON_ORDER.map((type) => WEAPON_DEFINITIONS[type].damage));
+    const maxShopBlast = Math.max(1, ...SHOP_WEAPON_ORDER.map((type) => WEAPON_DEFINITIONS[type].blastRadius));
+    const damagePercent = selectedWeapon ? Math.round((selectedWeapon.damage / maxShopDamage) * 100) : 0;
+    const blastPercent = selectedWeapon ? Math.round((selectedWeapon.blastRadius / maxShopBlast) * 100) : 0;
+    const featureTags = selectedWeapon ? getWeaponFeatureTags(selectedWeapon.type) : [];
     const canBuy = Boolean(focusPlayer && selection?.source === 'market' && !focusPlayer.shopReady && buyPrice !== null && focusPlayer.credits >= buyPrice);
     const canSell = Boolean(focusPlayer && selection?.source === 'stock' && !focusPlayer.shopReady && sellPrice !== null && ownedAmmo > 0);
 
@@ -1601,7 +1641,7 @@ function renderShopScreen() {
                             <p class="eyebrow">SHOP</p>
                             <h2>Carry-Over Arsenal</h2>
                         </div>
-                        ${focusPlayer ? `<div class="shop-head-meta" style="--accent:${focusPlayer.color}"><span class="shop-focus-name">${escapeHtml(focusPlayer.name)}</span><span class="shop-credit-stack"><small>Credits</small><span class="shop-credits">${focusPlayer.credits} cr</span></span></div>` : ''}
+                        ${focusPlayer ? `<div class="shop-head-meta" style="--accent:${focusPlayer.color}"><span class="shop-focus-name">${escapeHtml(focusPlayer.name)}</span><span class="shop-credit-stack"><small>Credits</small><span class="shop-credits">${focusPlayer.credits} cr</span></span><span class="shop-shield-chip">Shield ${focusPlayer.shield}</span></div>` : ''}
                     </div>
                     ${focusPlayer ? `
                         <div class="shop-columns tidy-shop-columns">
@@ -1649,9 +1689,14 @@ function renderShopScreen() {
                                         <h3>${selectedWeapon.name}</h3>
                                         <p class="weapon-detail-flavor">${selectedWeapon.flavor}</p>
                                     </div>
+                                    <div class="weapon-feature-pills">
+                                        ${featureTags.map((tag) => `<span class="weapon-feature-pill">${tag}</span>`).join('')}
+                                    </div>
+                                    <div class="weapon-meter-stack">
+                                        ${buildDetailMeter('Damage', damagePercent, selectedWeapon.projectileColor, `${selectedWeapon.damage}`)}
+                                        ${buildDetailMeter('Blast', blastPercent, selectedWeapon.projectileColor, `${selectedWeapon.blastRadius}`)}
+                                    </div>
                                     <div class="weapon-detail-stats">
-                                        <div><span>Blast</span><strong>${selectedWeapon.blastRadius}</strong></div>
-                                        <div><span>Damage</span><strong>${selectedWeapon.damage}</strong></div>
                                         <div><span>Stock</span><strong>${selection?.source === 'stock' ? (ownedAmmo < 0 ? 'INF' : ownedAmmo) : (focusPlayer.weapons.find((weapon) => weapon.type === selectedWeapon.type)?.ammo ?? 0)}</strong></div>
                                         <div><span>Buy</span><strong>${buyPrice ?? 'N/A'}</strong></div>
                                         <div><span>Sell</span><strong>${sellPrice ?? 'N/A'}</strong></div>
@@ -1695,7 +1740,6 @@ function renderShopScreen() {
     `;
     restoreShopScrollState();
 }
-
 function getRoundRankings(players: RoundSummary['players'], winnerId: string | null) {
     return [...players].sort((left, right) => {
         if (winnerId && left.id === winnerId) return -1;
@@ -1733,30 +1777,126 @@ function buildRoundAccolades(players: RoundSummary['players'], winnerId: string 
     const winner = players.find((player) => player.id === winnerId) ?? players[0];
     const topDamage = [...players].sort((left, right) => right.stats.damage - left.stats.damage)[0];
     const topKills = [...players].sort((left, right) => right.stats.kills - left.stats.kills)[0];
+    const topHits = [...players].sort((left, right) => right.stats.hits - left.stats.hits)[0];
     const topTaken = [...players].sort((left, right) => right.stats.damageTaken - left.stats.damageTaken)[0];
-    const topShots = [...players].sort((left, right) => right.stats.shots - left.stats.shots)[0];
+    const topSpender = [...players].sort((left, right) => right.stats.spent - left.stats.spent)[0];
     return [
-        { title: 'Winner', name: winner?.name ?? 'No one', value: winner ? 'Closed the round' : 'No winner', color: winner?.color ?? '#fff4d7' },
-        { title: 'Most Damage', name: topDamage?.name ?? 'No one', value: `${topDamage?.stats.damage ?? 0} damage`, color: topDamage?.color ?? '#fff4d7' },
-        { title: 'Most Kills', name: topKills?.name ?? 'No one', value: `${topKills?.stats.kills ?? 0} kills`, color: topKills?.color ?? '#fff4d7' },
-        { title: 'Most Damage Taken', name: topTaken?.name ?? 'No one', value: `${topTaken?.stats.damageTaken ?? 0} taken`, color: topTaken?.color ?? '#fff4d7' },
-        { title: 'Longest Barrage', name: topShots?.name ?? 'No one', value: `${topShots?.stats.shots ?? 0} shots`, color: topShots?.color ?? '#fff4d7' }
+        { title: 'Winner', name: winner?.name ?? 'No one', value: winner ? 'Closed the round' : 'No winner', color: winner?.color ?? '#fff4d7', icon: '[W]', playerId: winner?.id ?? null },
+        { title: 'Most Damage', name: topDamage?.name ?? 'No one', value: `${topDamage?.stats.damage ?? 0} damage`, color: topDamage?.color ?? '#fff4d7', icon: '[DMG]', playerId: topDamage?.id ?? null },
+        { title: 'Most Hits', name: topHits?.name ?? 'No one', value: `${topHits?.stats.hits ?? 0} hits`, color: topHits?.color ?? '#fff4d7', icon: '[HIT]', playerId: topHits?.id ?? null },
+        { title: 'Most Kills', name: topKills?.name ?? 'No one', value: `${topKills?.stats.kills ?? 0} kills`, color: topKills?.color ?? '#fff4d7', icon: '[KO]', playerId: topKills?.id ?? null },
+        { title: 'Most Damage Taken', name: topTaken?.name ?? 'No one', value: `${topTaken?.stats.damageTaken ?? 0} taken`, color: topTaken?.color ?? '#fff4d7', icon: '[TANK]', playerId: topTaken?.id ?? null },
+        { title: 'Biggest Spender', name: topSpender?.name ?? 'No one', value: `${topSpender?.stats.spent ?? 0} fired`, color: topSpender?.color ?? '#fff4d7', icon: '[$$]', playerId: topSpender?.id ?? null }
+    ];
+}
+
+function buildCampaignCeremonyHighlights(history: RoundSummary[]) {
+    const roundEntries = history.flatMap((summary) => summary.players.map((player) => ({ roundNumber: summary.roundNumber, player })));
+    const peakDamage = [...roundEntries].sort((left, right) => right.player.stats.damage - left.player.stats.damage)[0];
+    const peakKills = [...roundEntries].sort((left, right) => right.player.stats.kills - left.player.stats.kills)[0];
+    const peakHits = [...roundEntries].sort((left, right) => right.player.stats.hits - left.player.stats.hits)[0];
+    const peakSpend = [...roundEntries].sort((left, right) => right.player.stats.spent - left.player.stats.spent)[0];
+    const peakTaken = [...roundEntries].sort((left, right) => right.player.stats.damageTaken - left.player.stats.damageTaken)[0];
+    return [
+        { title: 'Deadliest Round', name: peakDamage?.player.name ?? 'No one', value: `${peakDamage?.player.stats.damage ?? 0} damage in round ${peakDamage?.roundNumber ?? '-'}`, color: peakDamage?.player.color ?? '#fff4d7', icon: '[DMG]' },
+        { title: 'Frag Storm', name: peakKills?.player.name ?? 'No one', value: `${peakKills?.player.stats.kills ?? 0} kills in one round`, color: peakKills?.player.color ?? '#fff4d7', icon: '[KO]' },
+        { title: 'Sharpest Volley', name: peakHits?.player.name ?? 'No one', value: `${peakHits?.player.stats.hits ?? 0} hits in round ${peakHits?.roundNumber ?? '-'}`, color: peakHits?.player.color ?? '#fff4d7', icon: '[HIT]' },
+        { title: 'Wildest Wallet', name: peakSpend?.player.name ?? 'No one', value: `${peakSpend?.player.stats.spent ?? 0} fired in one round`, color: peakSpend?.player.color ?? '#fff4d7', icon: '[$$]' },
+        { title: 'Punching Bag', name: peakTaken?.player.name ?? 'No one', value: `${peakTaken?.player.stats.damageTaken ?? 0} taken in one round`, color: peakTaken?.player.color ?? '#fff4d7', icon: '[TANK]' }
     ];
 }
 
 function buildCampaignAccolades(players: CampaignPlayer[]) {
-    const leader = players[0];
     const mostWins = [...players].sort((left, right) => right.stats.roundWins - left.stats.roundWins)[0];
     const mostDamage = [...players].sort((left, right) => right.stats.totalDamage - left.stats.totalDamage)[0];
     const mostKills = [...players].sort((left, right) => right.stats.totalKills - left.stats.totalKills)[0];
+    const mostHits = [...players].sort((left, right) => right.stats.totalHits - left.stats.totalHits)[0];
     const mostTaken = [...players].sort((left, right) => right.stats.totalDamageTaken - left.stats.totalDamageTaken)[0];
+    const topSpender = [...players].sort((left, right) => right.stats.totalSpent - left.stats.totalSpent)[0];
     return [
-        { title: 'Campaign Leader', name: leader?.name ?? 'No one', value: `${leader?.stats.score ?? 0} pts`, color: leader?.color ?? '#fff4d7' },
-        { title: 'Most Wins', name: mostWins?.name ?? 'No one', value: `${mostWins?.stats.roundWins ?? 0} wins`, color: mostWins?.color ?? '#fff4d7' },
-        { title: 'Most Damage', name: mostDamage?.name ?? 'No one', value: `${mostDamage?.stats.totalDamage ?? 0} damage`, color: mostDamage?.color ?? '#fff4d7' },
-        { title: 'Most Kills', name: mostKills?.name ?? 'No one', value: `${mostKills?.stats.totalKills ?? 0} kills`, color: mostKills?.color ?? '#fff4d7' },
-        { title: 'Most Punished', name: mostTaken?.name ?? 'No one', value: `${mostTaken?.stats.totalDamageTaken ?? 0} taken`, color: mostTaken?.color ?? '#fff4d7' }
+        { title: 'Most Wins', name: mostWins?.name ?? 'No one', value: `${mostWins?.stats.roundWins ?? 0} wins`, color: mostWins?.color ?? '#fff4d7', icon: '[WIN]', playerId: mostWins?.id ?? null },
+        { title: 'Most Damage', name: mostDamage?.name ?? 'No one', value: `${mostDamage?.stats.totalDamage ?? 0} damage`, color: mostDamage?.color ?? '#fff4d7', icon: '[DMG]', playerId: mostDamage?.id ?? null },
+        { title: 'Most Hits', name: mostHits?.name ?? 'No one', value: `${mostHits?.stats.totalHits ?? 0} hits`, color: mostHits?.color ?? '#fff4d7', icon: '[HIT]', playerId: mostHits?.id ?? null },
+        { title: 'Most Kills', name: mostKills?.name ?? 'No one', value: `${mostKills?.stats.totalKills ?? 0} kills`, color: mostKills?.color ?? '#fff4d7', icon: '[KO]', playerId: mostKills?.id ?? null },
+        { title: 'Most Punished', name: mostTaken?.name ?? 'No one', value: `${mostTaken?.stats.totalDamageTaken ?? 0} taken`, color: mostTaken?.color ?? '#fff4d7', icon: '[TANK]', playerId: mostTaken?.id ?? null },
+        { title: 'Biggest Spender', name: topSpender?.name ?? 'No one', value: `${topSpender?.stats.totalSpent ?? 0} fired`, color: topSpender?.color ?? '#fff4d7', icon: '[$$]', playerId: topSpender?.id ?? null }
     ];
+}
+
+function buildCampaignAwardGallery(history: RoundSummary[]) {
+    return history.flatMap((summary) => buildRoundAccolades(summary.players, summary.winnerId).map((accolade) => ({
+        ...accolade,
+        roundNumber: summary.roundNumber
+    })));
+}
+
+function renderCampaignAwardGallery(players: CampaignPlayer[], awards: ReportAccolade[]) {
+    return players.map((player) => {
+        const playerAwards = awards.filter((award) => award.playerId === player.id);
+        return `
+            <article class="gallery-player-card compact-gallery-player-card" style="--accent:${player.color}">
+                <div class="gallery-player-head">
+                    <strong>${escapeHtml(player.name)}</strong>
+                    <span>${playerAwards.length} honors</span>
+                </div>
+                <div class="gallery-badges compact-gallery-badges">
+                    ${playerAwards.length ? playerAwards.map((award, index) => `
+                        <div class="gallery-badge staged-card" style="--delay:${index * 40}ms">
+                            <span class="accolade-icon small">${award.icon}</span>
+                            <div>
+                                <strong>${award.title}</strong>
+                                <span>Round ${award.roundNumber ?? '-'} | ${award.value}</span>
+                            </div>
+                        </div>
+                    `).join('') : '<div class="gallery-empty">No honors yet</div>'}
+                </div>
+            </article>
+        `;
+    }).join('');
+}
+
+function renderAnimatedAccolades(accolades: ReportAccolade[], className = '') {
+    return `
+        <section class="accolade-grid ${className}">
+            ${accolades.map((accolade, index) => `
+                <article class="accolade-card staged-card" style="--accent:${accolade.color}; --delay:${index * 120}ms">
+                    <span class="accolade-icon">${accolade.icon}</span>
+                    <p class="eyebrow">${accolade.title}</p>
+                    <strong>${escapeHtml(accolade.name)}</strong>
+                    <span>${accolade.value}</span>
+                </article>
+            `).join('')}
+        </section>
+    `;
+}
+
+function renderMetricTable(title: string, players: StatBearingPlayer[], valueGetter: (player: StatBearingPlayer) => number, formatValue: (value: number) => string) {
+    const ranked = [...players].sort((left, right) => valueGetter(right) - valueGetter(left) || right.stats.score - left.stats.score || right.stats.totalDamage - left.stats.totalDamage);
+    const maxValue = Math.max(1, ...ranked.map((player) => valueGetter(player)));
+    return `
+        <section class="pixel-panel-lite metric-panel">
+            <div class="section-head compact-section-head">
+                <div>
+                    <p class="eyebrow">TABLE</p>
+                    <h3>${title}</h3>
+                </div>
+            </div>
+            <div class="metric-table-list">
+                ${ranked.map((player, index) => {
+                    const value = valueGetter(player);
+                    const width = Math.max(6, Math.round((value / maxValue) * 100));
+                    return `
+                        <div class="metric-row">
+                            <span class="metric-rank">${index + 1}</span>
+                            <span class="metric-name" style="--accent:${player.color}">${escapeHtml(player.name)}</span>
+                            <div class="metric-track"><span style="width:${width}%; background:${player.color}"></span></div>
+                            <strong class="metric-value" style="color:${player.color}">${formatValue(value)}</strong>
+                        </div>
+                    `;
+                }).join('')}
+            </div>
+        </section>
+    `;
 }
 
 function buildConicChart(entries: Array<{ color: string; value: number }>) {
@@ -1773,7 +1913,6 @@ function buildConicChart(entries: Array<{ color: string; value: number }>) {
     }
     return `conic-gradient(${segments.join(', ')})`;
 }
-
 function buildStatMeter(label: string, value: number, maxValue: number, color: string, valueLabel: string) {
     const percent = Math.max(8, Math.round((value / Math.max(1, maxValue)) * 100));
     return `
@@ -1785,6 +1924,78 @@ function buildStatMeter(label: string, value: number, maxValue: number, color: s
             <div class="stat-meter-track"><span style="width:${percent}%; background:${color}"></span></div>
         </div>
     `;
+}
+
+function buildDetailMeter(label: string, percent: number, color: string, valueLabel: string) {
+    return `
+        <div class="weapon-detail-meter">
+            <div class="weapon-detail-meter-head">
+                <span>${label}</span>
+                <strong style="color:${color}">${valueLabel}</strong>
+            </div>
+            <div class="weapon-detail-meter-track"><span style="width:${Math.max(0, percent)}%; background:${color}"></span></div>
+        </div>
+    `;
+}
+
+function getWeaponFeatureTags(weaponType: WeaponType) {
+    switch (weaponType) {
+        case 'merv':
+        case 'large_merv':
+            return ['Split x3', 'Airburst'];
+        case 'chaos':
+            return ['Chain x3', 'Randomized'];
+        case 'large_chaos':
+            return ['Chain x5', 'Randomized'];
+        case 'chaos_mirv':
+            return ['Split x3', 'Chaos chain'];
+        case 'large_chaos_mirv':
+            return ['Split x3', 'Chaos x5'];
+        case 'driller':
+        case 'large_driller':
+            return ['Line strike', 'Forward bore'];
+        case 'blast_bomb':
+        case 'large_blast_bomb':
+            return ['Terrain clear', 'Wide crater'];
+        case 'autocannon':
+        case 'large_autocannon':
+            return ['Burst x5', 'Scatter'];
+        case 'wall':
+        case 'large_wall':
+            return ['Utility', 'Build terrain'];
+        case 'bunker_buster':
+            return ['Burrow', 'Surface pop'];
+        case 'homing_missile':
+            return ['Tracking', 'Late lock'];
+        case 'relocator':
+            return ['Teleport', 'Utility'];
+        case 'leech':
+            return ['Shield steal', 'Sustain'];
+        case 'blossom':
+            return ['Petal burst', 'Cluster'];
+        case 'sinker':
+            return ['Vertical bore', 'Terrain cut'];
+        case 'crossfire':
+            return ['Plus burst', 'Area denial'];
+        case 'shield_small':
+        case 'shield_medium':
+        case 'shield_large':
+            return ['Carry over', 'Defense'];
+        case 'needle':
+        case 'large_needle':
+            return ['Precision', 'Direct hit'];
+        case 'nova':
+        case 'large_nova':
+            return ['Heavy blast', 'Finisher'];
+        case 'mortar':
+        case 'large_mortar':
+            return ['Arc shot', 'Splash'];
+        case 'cannon':
+        case 'large_cannon':
+            return ['Baseline', 'Reliable'];
+        default:
+            return ['Standard'];
+    }
 }
 
 function leaveLobby() {
@@ -1812,6 +2023,7 @@ function leaveMatch() {
     lobbyMode = 'idle';
     campaignPlayers = [];
     latestRoundSummary = null;
+    campaignRoundHistory = [];
     localShopCursor = 0;
     shopSelection = null;
     intermissionStage = 'hidden';
@@ -1973,6 +2185,7 @@ function createEmptyStats(id: string): PlayerStatsSnapshot {
         hits: 0,
         kills: 0,
         shots: 0,
+        spent: 0,
         damageTaken: 0,
         score: 0,
         roundWins: 0,
@@ -1980,7 +2193,19 @@ function createEmptyStats(id: string): PlayerStatsSnapshot {
         totalHits: 0,
         totalKills: 0,
         totalShots: 0,
+        totalSpent: 0,
         totalDamageTaken: 0
+    };
+}
+function cloneRoundSummary(summary: RoundSummary): RoundSummary {
+    return {
+        roundNumber: summary.roundNumber,
+        winnerId: summary.winnerId,
+        players: summary.players.map((player) => ({
+            ...player,
+            weapons: player.weapons.map((weapon) => ({ ...weapon })),
+            stats: { ...player.stats }
+        }))
     };
 }
 
@@ -1996,6 +2221,25 @@ function escapeHtml(value: string) {
 function escapeAttribute(value: string) {
     return escapeHtml(value);
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 

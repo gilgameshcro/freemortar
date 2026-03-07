@@ -3,6 +3,7 @@ import {
     clamp,
     cloneWeapons,
     getMaxPowerForHealth,
+    getWeaponShopPrice,
     isCombatWeapon,
     lerp,
     LOGICAL_HEIGHT,
@@ -82,6 +83,7 @@ interface RoundStats {
     hits: number;
     kills: number;
     shots: number;
+    spent: number;
     damageTaken: number;
 }
 
@@ -92,9 +94,9 @@ interface CampaignStats {
     totalHits: number;
     totalKills: number;
     totalShots: number;
+    totalSpent: number;
     totalDamageTaken: number;
 }
-
 interface DamagePopup {
     x: number;
     y: number;
@@ -488,6 +490,7 @@ export class Game {
 
         const barrelTip = tank.barrelTip;
         this.recordShot(tank.id, this.getWeaponShotCount(firedWeapon.type));
+        this.recordOrdnanceSpend(tank.id, firedWeapon.type);
         const burst = this.createProjectileBurst(barrelTip.x, barrelTip.y, tank.angle, tank.power, tank.id, firedWeapon.type);
         this.setActiveProjectilesFromBurst(burst, firedWeapon.type);
         this.state.phase = 'projectile';
@@ -1171,6 +1174,7 @@ export class Game {
             hits: round.hits,
             kills: round.kills,
             shots: round.shots,
+            spent: round.spent,
             damageTaken: round.damageTaken,
             score: campaign.score,
             roundWins: campaign.roundWins,
@@ -1178,6 +1182,7 @@ export class Game {
             totalHits: campaign.totalHits,
             totalKills: campaign.totalKills,
             totalShots: campaign.totalShots,
+            totalSpent: campaign.totalSpent,
             totalDamageTaken: campaign.totalDamageTaken
         };
     }
@@ -1225,6 +1230,7 @@ export class Game {
                 hits: entry.hits,
                 kills: entry.kills,
                 shots: entry.shots,
+                spent: entry.spent,
                 damageTaken: entry.damageTaken
             });
             this.campaignById.set(entry.id, this.toCampaignStats(entry));
@@ -1276,12 +1282,21 @@ export class Game {
         const campaign = this.campaignById.get(playerId);
         if (campaign) campaign.totalShots += amount;
     }
+
+    private recordOrdnanceSpend(playerId: string, weaponType: WeaponType) {
+        const spentValue = this.getWeaponSpendValue(weaponType);
+        const round = this.roundStatsById.get(playerId);
+        if (round) round.spent += spentValue;
+        const campaign = this.campaignById.get(playerId);
+        if (campaign) campaign.totalSpent += spentValue;
+    }
+
     private createRoundStats(): RoundStats {
-        return { damage: 0, hits: 0, kills: 0, shots: 0, damageTaken: 0 };
+        return { damage: 0, hits: 0, kills: 0, shots: 0, spent: 0, damageTaken: 0 };
     }
 
     private createCampaignStats(): CampaignStats {
-        return { score: 0, roundWins: 0, totalDamage: 0, totalHits: 0, totalKills: 0, totalShots: 0, totalDamageTaken: 0 };
+        return { score: 0, roundWins: 0, totalDamage: 0, totalHits: 0, totalKills: 0, totalShots: 0, totalSpent: 0, totalDamageTaken: 0 };
     }
 
     private toCampaignStats(entry: PlayerStatsSnapshot): CampaignStats {
@@ -1292,14 +1307,17 @@ export class Game {
             totalHits: entry.totalHits,
             totalKills: entry.totalKills,
             totalShots: entry.totalShots,
+            totalSpent: entry.totalSpent,
             totalDamageTaken: entry.totalDamageTaken
         };
     }
-
     private getWeaponShotCount(weaponType: WeaponType) {
         return weaponType === 'autocannon' || weaponType === 'large_autocannon' ? 5 : 1;
     }
 
+    private getWeaponSpendValue(weaponType: WeaponType) {
+        return getWeaponShopPrice(weaponType, 1) ?? 24;
+    }
     private setActiveProjectilesFromBurst(burst: Projectile[], weaponType: WeaponType) {
         this.pendingProjectiles = [];
         if (weaponType !== 'autocannon' && weaponType !== 'large_autocannon') {
@@ -1524,6 +1542,10 @@ export class Game {
         return `rgba(${(bigint >> 16) & 255}, ${(bigint >> 8) & 255}, ${bigint & 255}, ${alpha})`;
     }
 }
+
+
+
+
 
 
 

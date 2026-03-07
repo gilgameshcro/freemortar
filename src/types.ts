@@ -109,6 +109,7 @@ export interface PlayerStatsSnapshot {
     hits: number;
     kills: number;
     shots: number;
+    spent: number;
     damageTaken: number;
     score: number;
     roundWins: number;
@@ -116,6 +117,7 @@ export interface PlayerStatsSnapshot {
     totalHits: number;
     totalKills: number;
     totalShots: number;
+    totalSpent: number;
     totalDamageTaken: number;
 }
 
