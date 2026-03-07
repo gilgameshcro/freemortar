@@ -1002,7 +1002,7 @@ function handleRoundEnd(summary: RoundSummary) {
         const roundPlayer = summary.players.find((entry) => entry.id === player.id);
         if (!roundPlayer) return player;
         const gainedCredits = !network || network.role === 'host'
-            ? player.credits + ROUND_SHOP_BASE_CREDITS + calculateRoundCreditGain(summary, player.id, currentSettings)
+            ? ROUND_SHOP_BASE_CREDITS + calculateRoundCreditGain(summary, player.id, currentSettings)
             : player.credits;
         return {
             ...player,

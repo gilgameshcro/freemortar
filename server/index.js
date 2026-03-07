@@ -6,7 +6,7 @@ import { Server } from 'socket.io';
 
 const PORT = Number(process.env.PORT ?? 3000);
 const SOCKET_PATH = process.env.SOCKET_PATH ?? '/socket.io';
-const MAX_PLAYERS = 4;
+const MAX_PLAYERS = 8;
 const ROOM_CODE_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -248,3 +248,4 @@ function sanitizeLoadout(value) {
 function readErrorMessage(error) {
     return error instanceof Error ? error.message : 'Unknown server error.';
 }
+

@@ -337,10 +337,28 @@ export class Game {
             this.projectiles.splice(index, 1);
             this.persistShotTrace(projectile.ownerId, projectile.history);
             const chaosLimit = this.getChaosFollowupLimit(projectile.weaponType);
-            if (chaosLimit >= 0 && projectile.chaosDepth < chaosLimit) {
+            if (this.isAuthoritative && chaosLimit >= 0 && projectile.chaosDepth < chaosLimit) {
+                const followX = clamp(impact.x, 2, LOGICAL_WIDTH - 3);
+                const followY = clamp(impact.y - 2, 2, LOGICAL_HEIGHT - 3);
                 const followAngle = this.nextChaosAngle(impact.x, impact.y, projectile.ownerId, projectile.chaosDepth);
-                this.projectiles.push(projectile.createChaosFollowup(clamp(impact.x, 2, LOGICAL_WIDTH - 3), clamp(impact.y - 2, 2, LOGICAL_HEIGHT - 3), followAngle));
+                const followup = projectile.createChaosFollowup(followX, followY, followAngle);
+                this.projectiles.push(followup);
                 this.audio.playFire(projectile.weaponType === 'large_chaos' || projectile.weaponType === 'large_chaos_mirv' ? 'large_chaos' : 'chaos');
+                if (this.network?.role === 'host') {
+                    this.network.sendGameMessage({
+                        kind: 'SHOT_FIRED',
+                        playerId: projectile.ownerId,
+                        angle: followAngle,
+                        power: projectile.launchPower,
+                        weaponIndex: -1,
+                        weaponType: followup.weaponType,
+                        startX: followX,
+                        startY: followY,
+                        turnNumber: this.state.turnNumber,
+                        consumeAmmo: false,
+                        chaosDepth: followup.chaosDepth
+                    });
+                }
             }
             if (this.isAuthoritative) {
                 this.resolveShot(projectile.ownerId, projectile.weaponType, impact.x, impact.y, projectile.vx, projectile.vy);
@@ -485,10 +503,28 @@ export class Game {
         if (message.turnNumber !== this.state.turnNumber) return;
         const player = this.players.find((entry) => entry.id === message.playerId);
         if (!player) return;
-        player.selectedWeaponIndex = clamp(message.weaponIndex, 0, player.weapons.length - 1);
         player.setAim(message.angle, message.power, this.settings.powerRule);
-        player.consumeSelectedWeapon();
-        const burst = this.createProjectileBurst(message.startX, message.startY, message.angle, message.power, message.playerId, message.weaponType);
+        let burst: Projectile[];
+        if (message.consumeAmmo === false) {
+            burst = [
+                new Projectile(
+                    message.startX,
+                    message.startY,
+                    message.angle,
+                    message.power,
+                    message.playerId,
+                    message.weaponType,
+                    undefined,
+                    false,
+                    message.power,
+                    message.chaosDepth ?? 0
+                )
+            ];
+        } else {
+            player.selectedWeaponIndex = clamp(message.weaponIndex, 0, player.weapons.length - 1);
+            player.consumeSelectedWeapon();
+            burst = this.createProjectileBurst(message.startX, message.startY, message.angle, message.power, message.playerId, message.weaponType);
+        }
         this.setActiveProjectilesFromBurst(burst, message.weaponType);
         this.state.phase = 'projectile';
         this.awaitingShotResult = true;

@@ -174,6 +174,8 @@ export type GameMessage =
         startX: number;
         startY: number;
         turnNumber: number;
+        consumeAmmo?: boolean;
+        chaosDepth?: number;
     }
     | {
         kind: 'SHOT_RESULT';
@@ -213,4 +215,5 @@ export type GameMessage =
         campaignComplete: boolean;
         players: ShopPlayerSnapshot[];
     };
+
 

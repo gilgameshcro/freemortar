@@ -2,7 +2,7 @@ import type { LoadoutId, PowerRule, WeaponState, WeaponType } from './types';
 
 export const LOGICAL_WIDTH = 400;
 export const LOGICAL_HEIGHT = 225;
-export const MAX_PLAYERS = 4;
+export const MAX_PLAYERS = 8;
 export const MAX_HEALTH = 100;
 export const MIN_POWER = 6;
 export const STATIC_MAX_POWER = 160;
@@ -222,5 +222,6 @@ export function lerp(a: number, b: number, t: number): number {
 export function normalizeAngle(angle: number): number {
     return clamp(angle, -Math.PI - 1.18, 1.18);
 }
+
 
 
