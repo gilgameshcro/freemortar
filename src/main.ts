@@ -24,7 +24,7 @@ import type {
     MatchStartPayload,
     PlayerSetup,
     PlayerStatsSnapshot,
-    PowerRule,
+
     RoundOrderMode,
     ScoringSettings,
     TerrainTheme,
@@ -41,13 +41,17 @@ type ShopSelection = { playerId: string; weaponType: WeaponType; source: 'market
 type SetupLaunchMode = 'online-host' | 'local';
 
 const SHOP_WEAPON_ORDER: WeaponType[] = ['mortar', 'needle', 'nova', 'merv', 'chaos', 'chaos_mirv', 'driller', 'blast_bomb', 'autocannon', 'wall', 'large_wall', 'bunker_buster', 'homing_missile', 'relocator', 'leech', 'blossom', 'sinker', 'crossfire', 'large_cannon', 'large_mortar', 'large_needle', 'large_nova', 'large_merv', 'large_chaos', 'large_chaos_mirv', 'large_driller', 'large_blast_bomb', 'large_autocannon', 'shield_small', 'shield_medium', 'shield_large'];
-const TERRAIN_OPTIONS: Array<{ value: TerrainTheme; name: string; blurb: string }> = [
-    { value: 'rolling', name: 'Rolling', blurb: 'Balanced ridges and valleys.' },
-    { value: 'flats', name: 'Flats', blurb: 'Low contour, shallow craters.' },
-    { value: 'hills', name: 'Hills', blurb: 'Layered humps and firing pockets.' },
-    { value: 'mountains', name: 'Mountains', blurb: 'Extreme peaks with deep cuts.' },
-    { value: 'highlands', name: 'Highlands', blurb: 'Massive plateaus over low plains.' },
-    { value: 'divide', name: 'Divide', blurb: 'One side high, one side low.' }
+const TERRAIN_OPTIONS: Array<{ value: TerrainTheme; name: string }> = [
+    { value: 'rolling', name: 'Rolling' },
+    { value: 'flats', name: 'Flats' },
+    { value: 'hills', name: 'Hills' },
+    { value: 'mountains', name: 'Mountains' },
+    { value: 'highlands', name: 'Highlands' },
+    { value: 'divide', name: 'Divide' },
+    { value: 'caldera', name: 'Caldera' },
+    { value: 'spires', name: 'Spires' },
+    { value: 'badlands', name: 'Badlands' },
+    { value: 'trench', name: 'Trench' }
 ];
 
 type CampaignPlayer = {
@@ -75,10 +79,11 @@ const DEFAULT_SCORING: ScoringSettings = {
 };
 
 const DEFAULT_SETTINGS: MatchSettings = {
-    windMode: 'variable',
-    maxWind: 0.45,
+    windMode: 'disabled',
+    maxWind: 1.2,
     terrainThemes: TERRAIN_OPTIONS.map((option) => option.value),
     terrainCollapse: true,
+    shieldVisibility: true,
     powerRule: 'health_linked',
     rounds: 1,
     scoring: { ...DEFAULT_SCORING },
@@ -172,9 +177,8 @@ app.innerHTML = `
             <section id="battleSetupPanel" class="pixel-panel battle-setup-panel setup-drawer hidden">
                 <div class="battle-setup-head compact">
                     <div>
-                        <p class="eyebrow">MATCH RULES</p>
                         <h2 id="battleSetupTitle">Battle Setup</h2>
-                        <p id="battleSetupLead" class="field-help settings-help compact-help">Choose the rule set, terrain pool, and scoring before launching.</p>
+                        <p id="battleSetupLead" class="field-help settings-help compact-help"></p>
                     </div>
                     <div class="battle-setup-actions">
                         <button id="btnBattleSetupBack" class="pixel-button ghost" type="button">Back</button>
@@ -185,17 +189,13 @@ app.innerHTML = `
                     <section class="rules-cluster">
                         <div class="cluster-head">
                             <div>
-                                <p class="eyebrow">ROUND FLOW</p>
                                 <h3>Core rules</h3>
                             </div>
                         </div>
                         <div class="battle-setup-grid compact-rules-grid">
-                            <label class="setting-field span-2" for="powerRule">
-                                <span class="field-label">Power Cap</span>
-                                <select id="powerRule" class="pixel-select">
-                                    <option value="health_linked">HP Linked (200 max, -2 per HP lost)</option>
-                                    <option value="static">Static</option>
-                                </select>
+                            <label class="toggle-row setting-toggle span-2" for="powerRuleToggle">
+                                <input id="powerRuleToggle" type="checkbox" checked />
+                                <span>HP impacts power</span>
                             </label>
                             <label class="setting-field span-1" for="roundCount">
                                 <span class="field-label">Rounds</span>
@@ -217,18 +217,22 @@ app.innerHTML = `
                             <label class="setting-field span-2" for="windMode">
                                 <span class="field-label">Wind Mode</span>
                                 <select id="windMode" class="pixel-select">
+                                    <option value="disabled">Disabled</option>
                                     <option value="variable">Variable</option>
                                     <option value="constant">Constant</option>
-                                    <option value="disabled">Disabled</option>
                                 </select>
                             </label>
                             <label class="setting-field span-1" for="windMax">
                                 <span class="field-label">Wind Strength</span>
                                 <select id="windMax" class="pixel-select">
-                                    <option value="0.25">Low</option>
-                                    <option value="0.45" selected>Medium</option>
-                                    <option value="0.7">High</option>
+                                    <option value="0.6">Low</option>
+                                    <option value="1.2" selected>Medium</option>
+                                    <option value="2.1">High</option>
                                 </select>
+                            </label>
+                            <label class="toggle-row setting-toggle span-2" for="shieldVisibility">
+                                <input id="shieldVisibility" type="checkbox" checked />
+                                <span>Show shields on map</span>
                             </label>
                             <label class="toggle-row setting-toggle span-2" for="terrainCollapse">
                                 <input id="terrainCollapse" type="checkbox" checked />
@@ -240,18 +244,15 @@ app.innerHTML = `
                     <section class="rules-cluster terrain-cluster">
                         <div class="cluster-head">
                             <div>
-                                <p class="eyebrow">TERRAIN POOL</p>
                                 <h3>Eligible maps</h3>
                             </div>
-                            <p class="field-help compact-help">Every round pulls one map from the enabled set.</p>
-                        </div>
+                            </div>
                         <div id="terrainThemePool" class="terrain-pool-grid">
                             ${TERRAIN_OPTIONS.map((option) => `
                                 <label class="terrain-chip">
                                     <input type="checkbox" name="terrainThemePool" value="${option.value}" checked />
                                     <span>
                                         <strong>${option.name}</strong>
-                                        <small>${option.blurb}</small>
                                     </span>
                                 </label>
                             `).join('')}
@@ -261,11 +262,9 @@ app.innerHTML = `
                     <section class="rules-cluster scoring-cluster">
                         <div class="cluster-head">
                             <div>
-                                <p class="eyebrow">SCORING</p>
                                 <h3>Point sources</h3>
                             </div>
-                            <p class="field-help compact-help">Tick what counts, then tune the values.</p>
-                        </div>
+                            </div>
                         <div class="scoring-rules-grid compact-scoring-grid">
                             <label class="rule-row" for="scoringDamageToggle">
                                 <span class="rule-toggle"><input id="scoringDamageToggle" type="checkbox" checked /> Damage</span>
@@ -337,7 +336,11 @@ app.innerHTML = `
                     </div>
                 </section>
                 <section class="pixel-panel hud-card conditions-card compact-conditions-card">
-                    <h3 id="hudWind">Wind</h3>
+                    <div class="wind-readout">
+                        <span id="hudWind" class="wind-label">Wind 0/10 0</span>
+                        <span id="hudWindArrow" class="wind-arrow">•</span>
+                    </div>
+                    <div class="wind-meter"><span id="hudWindFill"></span></div>
                     <p id="hudCampaign" class="hud-subline">Round status</p>
                 </section>
             </div>
@@ -380,9 +383,10 @@ const battleSetupTitle = mustElement<HTMLElement>('battleSetupTitle');
 const battleSetupLead = mustElement<HTMLElement>('battleSetupLead');
 const btnBattleSetupBack = mustElement<HTMLButtonElement>('btnBattleSetupBack');
 const btnBattleSetupConfirm = mustElement<HTMLButtonElement>('btnBattleSetupConfirm');
-const powerRuleSelect = mustElement<HTMLSelectElement>('powerRule');
+const powerRuleToggle = mustElement<HTMLInputElement>('powerRuleToggle');
 const windModeSelect = mustElement<HTMLSelectElement>('windMode');
 const windMaxSelect = mustElement<HTMLSelectElement>('windMax');
+const shieldVisibilityInput = mustElement<HTMLInputElement>('shieldVisibility');
 const terrainThemeInputs = Array.from(document.querySelectorAll<HTMLInputElement>('input[name="terrainThemePool"]'));
 const roundCountInput = mustElement<HTMLInputElement>('roundCount');
 const roundOrderSelect = mustElement<HTMLSelectElement>('roundOrder');
@@ -424,6 +428,8 @@ const hudPowerFill = mustElement<HTMLElement>('hudPowerFill');
 const hudAngle = mustElement<HTMLElement>('hudAngle');
 const hudPowerLabel = mustElement<HTMLElement>('hudPowerLabel');
 const hudWind = mustElement<HTMLElement>('hudWind');
+const hudWindArrow = mustElement<HTMLElement>('hudWindArrow');
+const hudWindFill = mustElement<HTMLElement>('hudWindFill');
 const hudCampaign = mustElement<HTMLElement>('hudCampaign');
 const weaponSelect = mustElement<HTMLSelectElement>('weaponSelect');
 const scoreboard = mustElement<HTMLElement>('scoreboard');
@@ -453,10 +459,11 @@ let shopScrollTop = { stock: 0, market: 0 };
 let pendingSetupMode: SetupLaunchMode | null = null;
 playerNameInput.value = 'Pilot One';
 roomCodeInput.value = '';
-powerRuleSelect.value = DEFAULT_SETTINGS.powerRule;
+powerRuleToggle.checked = DEFAULT_SETTINGS.powerRule === 'health_linked';
 terrainThemeInputs.forEach((input) => { input.checked = DEFAULT_SETTINGS.terrainThemes.includes(input.value as TerrainTheme); });
 windModeSelect.value = DEFAULT_SETTINGS.windMode;
 windMaxSelect.value = `${DEFAULT_SETTINGS.maxWind}`;
+shieldVisibilityInput.checked = DEFAULT_SETTINGS.shieldVisibility;
 roundCountInput.value = `${DEFAULT_SETTINGS.rounds}`;
 roundOrderSelect.value = DEFAULT_SETTINGS.roundOrder;
 weaponCostMultiplierInput.value = `${DEFAULT_SETTINGS.weaponCostMultiplier}`;
@@ -626,7 +633,8 @@ function readMatchSettingsForm(): MatchSettings {
         maxWind: Number(windMaxSelect.value),
         terrainThemes: terrainThemeInputs.filter((input) => input.checked).map((input) => input.value as TerrainTheme).length ? terrainThemeInputs.filter((input) => input.checked).map((input) => input.value as TerrainTheme) : [...DEFAULT_SETTINGS.terrainThemes],
         terrainCollapse: terrainCollapseInput.checked,
-        powerRule: powerRuleSelect.value as PowerRule,
+        shieldVisibility: shieldVisibilityInput.checked,
+        powerRule: powerRuleToggle.checked ? 'health_linked' : 'static',
         rounds: clampSetting(Number(roundCountInput.value), 1, 99, DEFAULT_SETTINGS.rounds),
         roundOrder: roundOrderSelect.value as RoundOrderMode,
         scoring: readScoringSettingsForm(),
@@ -659,9 +667,7 @@ function openBattleSetup(mode: SetupLaunchMode) {
     pendingSetupMode = mode;
     battleSetupPanel.classList.remove('hidden');
     battleSetupTitle.textContent = mode === 'online-host' ? 'Host Match Rules' : 'Local Match Rules';
-    battleSetupLead.textContent = mode === 'online-host'
-        ? 'Tune the room rules, terrain pool, and scoring, then create the room.'
-        : 'Tune the local rules, terrain pool, and scoring, then create the skirmish lobby.';
+    battleSetupLead.textContent = '';
     btnBattleSetupConfirm.textContent = mode === 'online-host' ? 'Create Room' : 'Create Local Lobby';
     btnHost.classList.toggle('active', mode === 'online-host');
     btnLocal.classList.toggle('active', mode === 'local');
@@ -1832,9 +1838,10 @@ function updateReadyButton() {
 
 function syncMatchSettingsAvailability() {
     const disableSettings = lobbyMode === 'online-client';
-    powerRuleSelect.disabled = disableSettings;
+    powerRuleToggle.disabled = disableSettings;
     windModeSelect.disabled = disableSettings;
     windMaxSelect.disabled = disableSettings;
+    shieldVisibilityInput.disabled = disableSettings;
     terrainThemeInputs.forEach((input) => { input.disabled = disableSettings; });
     roundCountInput.disabled = disableSettings;
     weaponCostMultiplierInput.disabled = disableSettings;
@@ -1866,6 +1873,11 @@ function updateGameHud(snapshot: HudSnapshot) {
     hudPowerFill.style.background = snapshot.turnColor;
     hudAngle.textContent = snapshot.angleLabel;
     hudWind.textContent = snapshot.windLabel;
+    const windMatch = snapshot.windLabel.match(new RegExp('Wind (\\d+)/10 ([<>0])'));
+    const windLevel = windMatch ? Number(windMatch[1]) : 0;
+    const windArrow = windMatch?.[2] ?? '0';
+    hudWindArrow.textContent = windArrow;
+    hudWindFill.style.width = `${Math.max(0, Math.min(100, windLevel * 10))}%`;
     hudCampaign.textContent = snapshot.roundLabel;
     currentHintLabel = snapshot.hintLabel;
 
@@ -1890,9 +1902,9 @@ function renderBoard(snapshot: HudSnapshot) {
             <div class="score-topline">
                 <span class="score-rank">${index + 1}</span>
                 <span class="score-name">${escapeHtml(entry.name)}</span>
-                <span class="score-pill">${activeBoardTab === 'battle' ? `PTS ${entry.score}` : `CP ${entry.score}`}</span>
+                <span class="score-pill">${entry.score}</span>
             </div>
-            <div class="score-glow"><span style="width:${Math.max(6, (activeBoardTab === 'battle' ? entry.damageRatio : entry.score / maxCampaignScore) * 100)}%"></span></div>
+            <div class="score-glow ${activeBoardTab === 'battle' ? 'hp-glow' : ''}"><span style="width:${Math.max(6, (activeBoardTab === 'battle' ? entry.healthRatio : entry.score / maxCampaignScore) * 100)}%"></span>${activeBoardTab === 'battle' ? `<strong>${entry.health}</strong>` : ''}</div>
             <div class="score-badges">
                 <span class="score-badge dmg">${entry.damage}</span>
                 <span class="score-badge ko">${entry.kills}</span>
@@ -1919,7 +1931,9 @@ function resetHud() {
     hudPowerFill.style.width = '0%';
     hudPowerFill.style.background = '#ff7a59';
     hudAngle.textContent = 'Angle';
-    hudWind.textContent = 'Wind';
+    hudWind.textContent = 'Wind 0/10 0';
+    hudWindArrow.textContent = '0';
+    hudWindFill.style.width = '0%';
     hudCampaign.textContent = 'Round status';
     currentHintLabel = 'Arrow left and right aim, arrow up and down change power, hold Ctrl for fine adjustment, and space fires.';
     weaponSelect.innerHTML = '<option>Weapon</option>';
@@ -1982,6 +1996,14 @@ function escapeHtml(value: string) {
 function escapeAttribute(value: string) {
     return escapeHtml(value);
 }
+
+
+
+
+
+
+
+
 
 
 

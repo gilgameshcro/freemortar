@@ -87,7 +87,7 @@ export class Projectile {
             this.applyHoming(players);
         }
 
-        this.vx += wind * 0.0022;
+        this.vx += wind * 0.006;
         this.vy += gravity;
 
         const deltaX = this.vx;
@@ -297,5 +297,6 @@ export class Projectile {
         return bounced;
     }
 }
+
 
 

@@ -43,6 +43,8 @@ interface HudScoreEntry {
     id: string;
     name: string;
     color: string;
+    health: number;
+    healthRatio: number;
     damage: number;
     totalDamage: number;
     hits: number;
@@ -173,11 +175,13 @@ export class Game {
     private awaitingShotResult = false;
     private screenShake = 0;
     private roundEndEmitted = false;
+    private turnInteractionStarted = false;
 
     private readonly handleKeyDown = (event: KeyboardEvent) => {
         if (!this.canLocalControlCurrentTank()) return;
         const tank = this.currentPlayer;
         if (!tank) return;
+        this.turnInteractionStarted = true;
 
         let changedAim = false;
         const angleStep = event.ctrlKey ? Math.PI / 180 : 0.045;
@@ -221,6 +225,7 @@ export class Game {
 
         event.preventDefault();
         if (changedAim) {
+            this.turnInteractionStarted = true;
             void this.audio.unlock();
             this.audio.playAimTick();
             this.broadcastAimState();
@@ -251,6 +256,7 @@ export class Game {
         this.state.currentPlayerIndex = options.currentPlayerIndex;
         this.state.wind = options.wind;
         this.state.turnNumber = options.turnNumber;
+        this.turnInteractionStarted = false;
 
         this.players.forEach((player) => {
             this.roundStatsById.set(player.id, this.createRoundStats());
@@ -291,6 +297,7 @@ export class Game {
         if (!tank) return;
         if (!tank.weapons[index] || tank.weapons[index].ammo === 0 || !isCombatWeapon(tank.weapons[index].type)) return;
         tank.selectedWeaponIndex = index;
+        this.turnInteractionStarted = true;
         this.broadcastAimState();
         this.emitHud();
     }
@@ -430,6 +437,7 @@ export class Game {
             player.selectedWeaponIndex = clamp(message.weaponIndex, 0, player.weapons.length - 1);
             player.setAim(message.angle, message.power, this.settings.powerRule);
             player.ensureWeaponAvailable();
+            this.turnInteractionStarted = true;
             this.network?.sendGameMessage(message);
             return;
         }
@@ -473,6 +481,7 @@ export class Game {
 
     private launchProjectile(tank: Tank) {
         if (this.state.phase !== 'aiming') return;
+        this.turnInteractionStarted = true;
         const firedWeaponIndex = tank.selectedWeaponIndex;
         const firedWeapon = tank.consumeSelectedWeapon();
         if (!firedWeapon) return;
@@ -614,6 +623,7 @@ export class Game {
         this.state.turnNumber = turnNumber;
         this.state.winnerId = winnerId;
         this.state.phase = winnerId ? 'game_over' : 'aiming';
+        this.turnInteractionStarted = false;
         if (winnerId) this.emitRoundEndOnce();
     }
     private advanceTurn() {
@@ -632,6 +642,7 @@ export class Game {
         this.state.turnNumber += 1;
         this.state.wind = this.nextWind();
         this.state.phase = 'aiming';
+        this.turnInteractionStarted = false;
         this.emitTurnState();
     }
 
@@ -679,6 +690,8 @@ export class Game {
                 id: player.id,
                 name: player.name,
                 color: player.color,
+                health: player.health,
+                healthRatio: player.health / 100,
                 shield: player.shield,
                 weapons: cloneWeapons(player.weapons),
                 stats: this.snapshotStats().find((entry) => entry.id === player.id) ?? this.createStatsSnapshot(player.id)
@@ -946,7 +959,18 @@ export class Game {
         this.drawShotTraces();
         this.drawDebris();
         this.particles.forEach((particle) => particle.draw(this.ctx));
-        this.players.forEach((tank) => { if (tank.alive) tank.draw(this.ctx, tank.id === this.currentPlayer?.id); });
+        const currentPlayerId = this.currentPlayer?.id ?? null;
+        const showTurnPrompt = this.state.phase === 'aiming' && !this.turnInteractionStarted;
+        const promptPulse = (Math.sin(performance.now() * 0.012) + 1) * 0.5;
+        this.players.forEach((tank) => {
+            if (tank.alive) {
+                tank.draw(this.ctx, {
+                    showTurnPrompt: showTurnPrompt && tank.id === currentPlayerId,
+                    promptPulse,
+                    showShield: this.settings.shieldVisibility
+                });
+            }
+        });
         this.projectiles.forEach((projectile) => projectile.draw(this.ctx));
         this.drawDamagePopups();
         this.ctx.restore();
@@ -1064,11 +1088,15 @@ export class Game {
         const ammoLabel = weapon.ammo < 0 ? 'INF' : `${weapon.ammo}`;
         const angleDegrees = Math.round(currentPlayer.angle * 180 / Math.PI);
         const currentMaxPower = getMaxPowerForHealth(currentPlayer.health, this.settings.powerRule);
-        const windText = this.settings.windMode === 'disabled'
-            ? 'Wind disabled'
-            : this.settings.windMode === 'constant'
-                ? `Constant wind ${Math.abs(Math.round(this.state.wind * 100))}`
-                : `Variable wind ${Math.abs(Math.round(this.state.wind * 100))}`;
+        const windLevel = this.settings.windMode === 'disabled' || this.settings.maxWind <= 0
+            ? 0
+            : Math.max(0, Math.min(10, Math.round((Math.abs(this.state.wind) / this.settings.maxWind) * 10)));
+        const windDirection = this.settings.windMode === 'disabled' || Math.abs(this.state.wind) < 0.001
+            ? '0'
+            : this.state.wind > 0
+                ? '>'
+                : '<';
+        const windText = `Wind ${windLevel}/10 ${windDirection}`;
         const hintLabel = this.state.phase === 'game_over'
             ? `${winner?.name ?? 'No one'} won the round. Open the debrief and shop to continue.`
             : this.canLocalControlCurrentTank()
@@ -1087,7 +1115,7 @@ export class Game {
             weaponLabel: `${weaponDefinition.name} | Ammo ${ammoLabel}`,
             healthPercent: currentPlayer.health / 100,
             weaponDetail: `${weaponDefinition.flavor} | Blast ${weaponDefinition.blastRadius} | Damage ${weaponDefinition.damage}`,
-            powerLabel: `Charge ${Math.round(currentPlayer.power)} / ${currentMaxPower}${this.settings.powerRule === 'health_linked' ? ' (HP-linked)' : ''}`,
+            powerLabel: `Charge ${Math.round(currentPlayer.power)} / ${currentMaxPower}`,
             powerPercent: currentPlayer.power / Math.max(1, currentMaxPower),
             angleLabel: `Angle ${angleDegrees} deg`,
             selectedWeaponIndex: currentPlayer.selectedWeaponIndex,
@@ -1104,6 +1132,7 @@ export class Game {
             scoreboard: this.snapshotScoreboard()
         });
     }
+
     private canLocalControlCurrentTank() {
         if (this.state.phase !== 'aiming') return false;
         const currentPlayer = this.currentPlayer;
@@ -1167,6 +1196,8 @@ export class Game {
                 id: player.id,
                 name: player.name,
                 color: player.color,
+                health: player.health,
+                healthRatio: player.health / 100,
                 damage: round.damage,
                 totalDamage: campaign.totalDamage,
                 hits: round.hits,
@@ -1493,6 +1524,13 @@ export class Game {
         return `rgba(${(bigint >> 16) & 255}, ${(bigint >> 8) & 255}, ${bigint & 255}, ${alpha})`;
     }
 }
+
+
+
+
+
+
+
 
 
 

@@ -11,6 +11,12 @@ import {
 } from './config';
 import type { LoadoutId, PlayerSetup, PlayerSnapshot, PowerRule, WeaponState } from './types';
 
+interface DrawOptions {
+    showTurnPrompt: boolean;
+    promptPulse: number;
+    showShield: boolean;
+}
+
 export class Tank {
     public readonly id: string;
     public readonly name: string;
@@ -154,7 +160,7 @@ export class Tank {
         this.ensureWeaponAvailable();
     }
 
-    public draw(ctx: CanvasRenderingContext2D, isCurrentTurn: boolean) {
+    public draw(ctx: CanvasRenderingContext2D, options: DrawOptions) {
         const pivotY = -this.bodyHeight + 1;
         const tipX = Math.cos(this.angle) * this.barrelLength;
         const tipY = pivotY + Math.sin(this.angle) * this.barrelLength;
@@ -165,9 +171,17 @@ export class Tank {
         ctx.save();
         ctx.translate(Math.round(this.x), Math.round(this.y));
 
-        if (isCurrentTurn && this.alive) {
-            ctx.fillStyle = 'rgba(255, 245, 214, 0.16)';
-            ctx.fillRect(-6, -1, 12, 2);
+        if (options.showShield && this.shield > 0 && this.alive) {
+            const shieldStrength = Math.max(0.08, this.shield / Math.max(1, this.maxShield || MAX_SHIELD));
+            ctx.fillStyle = `rgba(98, 231, 255, ${0.03 + shieldStrength * 0.08})`;
+            ctx.fillRect(-4, -this.bodyHeight, 8, this.bodyHeight + 2);
+            ctx.strokeStyle = `rgba(98, 231, 255, ${0.06 + shieldStrength * 0.16})`;
+            ctx.lineWidth = 1;
+            ctx.strokeRect(-3.5, -this.bodyHeight + 0.5, 7, this.bodyHeight + 1);
+        }
+        if (options.showTurnPrompt && this.alive) {
+            ctx.fillStyle = `rgba(255, 244, 167, ${0.18 + options.promptPulse * 0.42})`;
+            ctx.fillRect(-1, -this.bodyHeight - 6, 2, 2);
         }
 
         ctx.fillStyle = treadColor;
@@ -219,4 +233,9 @@ export class Tank {
         this.maxShield = this.shield > 0 ? MAX_SHIELD : 0;
     }
 }
+
+
+
+
+
 

@@ -830,8 +830,9 @@ canvas {
     color: #120d16;
     background: color-mix(in srgb, var(--accent, #fff) 85%, white 15%);
     padding: 4px 8px;
-    font-size: 0.76rem;
+    font-size: 0.92rem;
     font-family: Consolas, 'Lucida Console', 'Courier New', monospace;
+    font-weight: 900;
 }
 
 .score-badges {
@@ -846,6 +847,8 @@ canvas {
     justify-content: flex-end;
     gap: 8px;
     font-family: Consolas, 'Lucida Console', 'Courier New', monospace;
+    font-size: 0.92rem;
+    font-weight: 800;
     background: rgba(9, 6, 12, 0.78);
     border: 1px solid rgba(255,255,255,0.12);
 }
@@ -1656,6 +1659,10 @@ canvas {
 
 .compact-conditions-card h3 {
     font-size: 1.2rem;
+}
+
+.compact-conditions-card .hud-subline {
+    font-size: 0.82rem;
 }
 
 .compact-scoreboard-card {
@@ -2953,3 +2960,63 @@ canvas {
     font-size: 0.74rem;
     white-space: nowrap;
 }
+
+.settings-help:empty {
+    display: none;
+}
+
+
+.wind-readout {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+}
+
+.wind-label {
+    font-size: 0.78rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: #9be7ff;
+}
+
+.wind-arrow {
+    font-size: 1rem;
+    color: #d9fbff;
+}
+
+.wind-meter {
+    height: 10px;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    background: rgba(8, 6, 12, 0.72);
+    overflow: hidden;
+}
+
+.wind-meter span {
+    display: block;
+    height: 100%;
+    background: linear-gradient(90deg, #4dd8ff, #b7f0ff);
+    box-shadow: 0 0 12px rgba(77, 216, 255, 0.32);
+}
+
+.score-glow {
+    position: relative;
+}
+
+.score-glow strong {
+    position: absolute;
+    inset: 0;
+    display: grid;
+    place-items: center;
+    font-size: 0.72rem;
+    font-weight: 900;
+    color: #fef8ed;
+    text-shadow: 0 1px 0 rgba(0, 0, 0, 0.55);
+    pointer-events: none;
+}
+
+.score-glow.hp-glow span {
+    background: linear-gradient(90deg, color-mix(in srgb, var(--accent, #fff) 88%, white 12%), color-mix(in srgb, var(--accent, #fff) 72%, black 6%));
+}
+

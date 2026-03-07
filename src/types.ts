@@ -41,7 +41,7 @@ export type PowerRule = 'static' | 'health_linked';
 
 export type RoundOrderMode = 'player_number' | 'random' | 'winning_order' | 'reverse_winning_order';
 
-export type TerrainTheme = 'rolling' | 'flats' | 'hills' | 'mountains' | 'highlands' | 'divide';
+export type TerrainTheme = 'rolling' | 'flats' | 'hills' | 'mountains' | 'highlands' | 'divide' | 'caldera' | 'spires' | 'badlands' | 'trench';
 
 export interface ScoringSettings {
     awardDamage: boolean;
@@ -59,6 +59,7 @@ export interface MatchSettings {
     maxWind: number;
     terrainThemes: TerrainTheme[];
     terrainCollapse: boolean;
+    shieldVisibility: boolean;
     powerRule: PowerRule;
     rounds: number;
     scoring: ScoringSettings;
@@ -215,5 +216,8 @@ export type GameMessage =
         campaignComplete: boolean;
         players: ShopPlayerSnapshot[];
     };
+
+
+
 
 

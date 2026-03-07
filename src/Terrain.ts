@@ -224,6 +224,14 @@ export class Terrain {
                 return this.generateHighlandHeights();
             case 'divide':
                 return this.generateDivideHeights();
+            case 'caldera':
+                return this.generateCalderaHeights();
+            case 'spires':
+                return this.generateSpireHeights();
+            case 'badlands':
+                return this.generateBadlandHeights();
+            case 'trench':
+                return this.generateTrenchHeights();
             default:
                 return this.generateRollingHeights();
         }
@@ -353,6 +361,80 @@ export class Terrain {
         return heights;
     }
 
+    private generateCalderaHeights() {
+        const heights = new Int16Array(this.width);
+        let current = this.height * 0.62;
+        const phase = this.random() * Math.PI * 2;
+        for (let x = 0; x < this.width; x += 1) {
+            const t = x / Math.max(1, this.width - 1);
+            const rimLeft = Math.exp(-Math.pow((t - 0.22) / 0.09, 2));
+            const rimRight = Math.exp(-Math.pow((t - 0.78) / 0.09, 2));
+            const basin = Math.exp(-Math.pow((t - 0.5) / 0.18, 2));
+            const target = this.height * 0.74
+                - (rimLeft + rimRight) * 88
+                + basin * 36
+                + Math.sin(t * Math.PI * 6 + phase) * 4;
+            current = current * 0.7 + target * 0.3 + (this.random() - 0.5) * 1.4;
+            heights[x] = Math.round(clamp(current, this.height * 0.08, this.height - 8));
+        }
+        return heights;
+    }
+    private generateSpireHeights() {
+        const heights = new Int16Array(this.width);
+        let current = this.height * 0.7;
+        const phase = this.random() * Math.PI * 2;
+        for (let x = 0; x < this.width; x += 1) {
+            const t = x / Math.max(1, this.width - 1);
+            const spikes = Math.pow(Math.abs(Math.sin(t * Math.PI * 9.5 + phase)), 10);
+            const needles = Math.pow(Math.abs(Math.sin(t * Math.PI * 22.5 + phase * 0.7)), 18);
+            const target = this.height * 0.79
+                - spikes * 118
+                - needles * 72
+                + Math.sin(t * Math.PI * 2.5 + phase) * 8;
+            current = current * 0.45 + target * 0.55 + (this.random() - 0.5) * 2.2;
+            heights[x] = Math.round(clamp(current, this.height * 0.04, this.height - 6));
+        }
+        return heights;
+    }
+    private generateBadlandHeights() {
+        const heights = new Int16Array(this.width);
+        let current = this.height * 0.63;
+        const phase = this.random() * Math.PI * 2;
+        for (let x = 0; x < this.width; x += 1) {
+            const t = x / Math.max(1, this.width - 1);
+            const saw = ((t * 7.5 + phase) % 1 + 1) % 1;
+            const terraces = Math.floor(((t * 13.5 + phase * 0.2) % 1 + 1) % 1 * 4) / 3;
+            const jag = Math.sin(t * Math.PI * 15 + phase) * 6;
+            const target = this.height * 0.72
+                - saw * 72
+                - terraces * 26
+                + jag;
+            current = current * 0.58 + target * 0.42 + (this.random() - 0.5) * 2.8;
+            heights[x] = Math.round(clamp(current, this.height * 0.08, this.height - 10));
+        }
+        return heights;
+    }
+    private generateTrenchHeights() {
+        const heights = new Int16Array(this.width);
+        let current = this.height * 0.58;
+        const trenchCenter = 0.24 + this.random() * 0.52;
+        const trenchWidth = 0.08 + this.random() * 0.06;
+        const phase = this.random() * Math.PI * 2;
+        for (let x = 0; x < this.width; x += 1) {
+            const t = x / Math.max(1, this.width - 1);
+            const trench = Math.exp(-Math.pow((t - trenchCenter) / trenchWidth, 2));
+            const shoulderLeft = Math.exp(-Math.pow((t - (trenchCenter - trenchWidth * 1.9)) / (trenchWidth * 1.5), 2));
+            const shoulderRight = Math.exp(-Math.pow((t - (trenchCenter + trenchWidth * 1.9)) / (trenchWidth * 1.5), 2));
+            const target = this.height * 0.77
+                - (shoulderLeft + shoulderRight) * 78
+                + trench * 54
+                + Math.sin(t * Math.PI * 4 + phase) * 4;
+            current = current * 0.72 + target * 0.28 + (this.random() - 0.5) * 1.6;
+            heights[x] = Math.round(clamp(current, this.height * 0.06, this.height - 8));
+        }
+        return heights;
+    }
+
     private refreshSurface(left: number, right: number) {
         for (let x = left; x <= right; x += 1) {
             this.surface[x] = this.findSurface(x);
@@ -449,5 +531,7 @@ export class Terrain {
         return a + (b - a) * t;
     }
 }
+
+
 
 
