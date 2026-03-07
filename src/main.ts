@@ -40,7 +40,7 @@ type ShopSelection = { playerId: string; weaponType: WeaponType; source: 'market
 
 type SetupLaunchMode = 'online-host' | 'local';
 
-const SHOP_WEAPON_ORDER: WeaponType[] = ['mortar', 'needle', 'nova', 'merv', 'chaos'];
+const SHOP_WEAPON_ORDER: WeaponType[] = ['mortar', 'needle', 'nova', 'merv', 'chaos', 'chaos_mirv', 'driller', 'blast_bomb', 'autocannon', 'wall', 'large_wall', 'bunker_buster', 'homing_missile', 'relocator', 'leech', 'blossom', 'sinker', 'crossfire', 'large_cannon', 'large_mortar', 'large_needle', 'large_nova', 'large_merv', 'large_chaos', 'large_chaos_mirv', 'large_driller', 'large_blast_bomb', 'large_autocannon', 'shield_small', 'shield_medium', 'shield_large'];
 const TERRAIN_OPTIONS: Array<{ value: TerrainTheme; name: string; blurb: string }> = [
     { value: 'rolling', name: 'Rolling', blurb: 'Balanced ridges and valleys.' },
     { value: 'flats', name: 'Flats', blurb: 'Low contour, shallow craters.' },
@@ -57,6 +57,7 @@ type CampaignPlayer = {
     loadout: LoadoutId;
     isHost: boolean;
     weapons: WeaponState[];
+    shield: number;
     credits: number;
     shopReady: boolean;
     stats: PlayerStatsSnapshot;
@@ -321,6 +322,7 @@ app.innerHTML = `
             <div class="game-status-row compact-hud-row">
                 <section class="pixel-panel hud-card pilot-card-live">
                     <h3 id="hudPilot">No active pilot</h3>
+                    <div class="health-meter shield-meter"><div class="health-bar shield-bar"><span id="hudShieldFill"></span></div></div>
                     <div class="health-meter"><div class="health-bar"><span id="hudHealthFill"></span></div></div>
                 </section>
                 <section class="pixel-panel hud-card arsenal-card compact-arsenal-card">
@@ -415,6 +417,7 @@ const btnMuteGame = mustElement<HTMLButtonElement>('btnMuteGame');
 const btnMusicGame = mustElement<HTMLButtonElement>('btnMusicGame');
 const btnHelpGame = mustElement<HTMLButtonElement>('btnHelpGame');
 const hudPilot = mustElement<HTMLElement>('hudPilot');
+const hudShieldFill = mustElement<HTMLElement>('hudShieldFill');
 const hudHealthFill = mustElement<HTMLElement>('hudHealthFill');
 const hudWeapon = mustElement<HTMLElement>('hudWeapon');
 const hudPowerFill = mustElement<HTMLElement>('hudPowerFill');
@@ -446,6 +449,7 @@ let latestHudSnapshot: HudSnapshot | null = null;
 let currentHintLabel = 'Arrow left and right aim, arrow up and down change power, hold Ctrl for fine adjustment, and space fires.';
 let localShopCursor = 0;
 let shopSelection: ShopSelection | null = null;
+let shopScrollTop = { stock: 0, market: 0 };
 let pendingSetupMode: SetupLaunchMode | null = null;
 playerNameInput.value = 'Pilot One';
 roomCodeInput.value = '';
@@ -584,6 +588,7 @@ btnReady.addEventListener('click', async () => {
 btnLeaveLobby.addEventListener('click', leaveLobby);
 btnLeaveMatch.addEventListener('click', leaveMatch);
 intermissionScreen.addEventListener('click', handleIntermissionClick);
+window.addEventListener('keydown', handleShopKeydown);
 boardTabBattle.addEventListener('click', () => { activeBoardTab = 'battle'; syncBoardTabs(); if (latestHudSnapshot) renderBoard(latestHudSnapshot); });
 boardTabCampaign.addEventListener('click', () => { activeBoardTab = 'campaign'; syncBoardTabs(); if (latestHudSnapshot) renderBoard(latestHudSnapshot); });
 
@@ -769,6 +774,7 @@ function bindNetwork(activeNetwork: Network) {
             loadout: player.loadout,
             isHost: player.id === 'host',
             weapons: (player.weapons ?? createWeaponsForLoadout(player.loadout)).map((weapon) => ({ ...weapon })),
+            shield: player.shield ?? campaignPlayers.find((entry) => entry.id === player.id)?.shield ?? 0,
             credits: campaignPlayers.find((entry) => entry.id === player.id)?.credits ?? 0,
             shopReady: false,
             stats: payload.campaignStats.find((entry) => entry.id === player.id) ?? createEmptyStats(player.id)
@@ -996,11 +1002,12 @@ function handleRoundEnd(summary: RoundSummary) {
         const roundPlayer = summary.players.find((entry) => entry.id === player.id);
         if (!roundPlayer) return player;
         const gainedCredits = !network || network.role === 'host'
-            ? player.credits + roundPlayer.stats.score + ROUND_SHOP_BASE_CREDITS
+            ? player.credits + ROUND_SHOP_BASE_CREDITS + calculateRoundCreditGain(summary, player.id, currentSettings)
             : player.credits;
         return {
             ...player,
             weapons: roundPlayer.weapons.map((weapon) => ({ ...weapon })),
+            shield: roundPlayer.shield,
             stats: { ...roundPlayer.stats },
             credits: gainedCredits,
             shopReady: false
@@ -1015,7 +1022,6 @@ function handleRoundEnd(summary: RoundSummary) {
     intermissionStage = 'victory';
     renderIntermission();
 }
-
 function bindIntermissionMessages() {
     if (!network) return;
     network.onGameMessage = (message) => {
@@ -1035,6 +1041,7 @@ function handleIntermissionMessage(message: GameMessage) {
                     loadout: existing?.loadout ?? 'balanced',
                     isHost: existing?.isHost ?? false,
                     weapons: player.weapons.map((weapon) => ({ ...weapon })),
+                    shield: player.shield,
                     credits: player.credits,
                     shopReady: player.shopReady,
                     stats: { ...player.stats }
@@ -1049,6 +1056,7 @@ function handleIntermissionMessage(message: GameMessage) {
                 ...player,
                 credits: message.credits,
                 shopReady: message.shopReady,
+                shield: message.shield,
                 weapons: message.weapons.map((weapon) => ({ ...weapon }))
             } : player);
             broadcastShopSync();
@@ -1070,6 +1078,7 @@ function broadcastShopSync() {
                 credits: player.credits,
                 shopReady: player.shopReady,
                 weapons: player.weapons.map((weapon) => ({ ...weapon })),
+                shield: player.shield,
                 stats: { ...player.stats }
             }))
         });
@@ -1197,10 +1206,10 @@ function syncShopState(playerId: string) {
         playerId,
         credits: player.credits,
         shopReady: player.shopReady,
-        weapons: player.weapons.map((weapon) => ({ ...weapon }))
+        weapons: player.weapons.map((weapon) => ({ ...weapon })),
+        shield: player.shield
     });
 }
-
 function maybeLaunchNextRound() {
     if (campaignComplete) return;
     if (!campaignPlayers.length || !campaignPlayers.every((player) => player.shopReady)) return;
@@ -1275,6 +1284,54 @@ function ensureShopSelection(player: CampaignPlayer | null) {
 
     shopSelection = null;
     return null;
+}
+
+function getShopSelectionPool(player: CampaignPlayer, source: ShopSelection['source']) {
+    if (source === 'stock') {
+        return player.weapons.filter((weapon) => weapon.type !== 'cannon' && weapon.ammo > 0).map((weapon) => weapon.type);
+    }
+    return SHOP_WEAPON_ORDER.filter((type) => getWeaponShopPrice(type, currentSettings.weaponCostMultiplier) !== null);
+}
+
+function cycleShopSelection(direction: 1 | -1) {
+    const player = getShopFocusPlayer();
+    const selection = ensureShopSelection(player);
+    if (!player || !selection || player.shopReady) return;
+    const pool = getShopSelectionPool(player, selection.source);
+    if (!pool.length) return;
+    const currentIndex = Math.max(0, pool.indexOf(selection.weaponType));
+    const nextIndex = (currentIndex + direction + pool.length) % pool.length;
+    shopSelection = { ...selection, weaponType: pool[nextIndex] };
+    renderIntermission();
+}
+
+function handleShopKeydown(event: KeyboardEvent) {
+    if (intermissionStage !== 'shop') return;
+    const target = event.target as HTMLElement | null;
+    if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT')) return;
+
+    const focusPlayer = getShopFocusPlayer();
+    const selection = ensureShopSelection(focusPlayer);
+    if (!focusPlayer || !selection || focusPlayer.shopReady) return;
+
+    if (event.key === 'ArrowUp') {
+        event.preventDefault();
+        cycleShopSelection(-1);
+        return;
+    }
+    if (event.key === 'ArrowDown') {
+        event.preventDefault();
+        cycleShopSelection(1);
+        return;
+    }
+    if (event.key === ' ' || event.key === 'Enter') {
+        event.preventDefault();
+        if (selection.source === 'market') {
+            purchaseWeapon(selection.playerId, selection.weaponType);
+        } else {
+            sellWeapon(selection.playerId, selection.weaponType);
+        }
+    }
 }
 
 function renderIntermission() {
@@ -1501,7 +1558,25 @@ function renderCampaignScreen() {
     `;
 }
 
+function captureShopScrollState() {
+    const stockList = intermissionScreen.querySelector<HTMLElement>('.tidy-weapon-list');
+    const marketList = intermissionScreen.querySelector<HTMLElement>('.tidy-store-list');
+    if (stockList) shopScrollTop.stock = stockList.scrollTop;
+    if (marketList) shopScrollTop.market = marketList.scrollTop;
+}
+
+function restoreShopScrollState() {
+    const stockList = intermissionScreen.querySelector<HTMLElement>('.tidy-weapon-list');
+    const marketList = intermissionScreen.querySelector<HTMLElement>('.tidy-store-list');
+    if (stockList) stockList.scrollTop = shopScrollTop.stock;
+    if (marketList) marketList.scrollTop = shopScrollTop.market;
+
+    const selected = intermissionScreen.querySelector<HTMLElement>('.tidy-weapon-chip.selected, .tidy-store-item.selected');
+    selected?.scrollIntoView({ block: 'nearest' });
+}
+
 function renderShopScreen() {
+    captureShopScrollState();
     const focusPlayer = getShopFocusPlayer();
     const selection = ensureShopSelection(focusPlayer);
     const selectedWeapon = selection ? WEAPON_DEFINITIONS[selection.weaponType] : null;
@@ -1520,7 +1595,7 @@ function renderShopScreen() {
                             <p class="eyebrow">SHOP</p>
                             <h2>Carry-Over Arsenal</h2>
                         </div>
-                        ${focusPlayer ? `<div class="shop-head-meta" style="--accent:${focusPlayer.color}"><span class="shop-focus-name">${escapeHtml(focusPlayer.name)}</span><span class="shop-credit-stack"><small>Available Credits</small><span class="shop-credits">${focusPlayer.credits} cr</span></span></div>` : ''}
+                        ${focusPlayer ? `<div class="shop-head-meta" style="--accent:${focusPlayer.color}"><span class="shop-focus-name">${escapeHtml(focusPlayer.name)}</span><span class="shop-credit-stack"><small>Credits</small><span class="shop-credits">${focusPlayer.credits} cr</span></span></div>` : ''}
                     </div>
                     ${focusPlayer ? `
                         <div class="shop-columns tidy-shop-columns">
@@ -1532,7 +1607,7 @@ function renderShopScreen() {
                                 <div class="weapon-list tidy-weapon-list">
                                     ${focusPlayer.weapons.filter((weapon) => weapon.ammo !== 0 || weapon.type === 'cannon').map((weapon) => `
                                         <button class="weapon-chip tidy-weapon-chip ${selection?.source === 'stock' && selection.weaponType === weapon.type ? 'selected' : ''}" data-action="select-weapon" data-player-id="${focusPlayer.id}" data-source="stock" data-weapon="${weapon.type}" ${focusPlayer.shopReady ? 'disabled' : ''}>
-                                            <span class="shop-row-main"><span class="weapon-name">${WEAPON_DEFINITIONS[weapon.type].name}</span><small>Owned</small></span>
+                                            <span class="shop-row-main"><span class="weapon-name">${WEAPON_DEFINITIONS[weapon.type].name}</span></span>
                                             <strong class="shop-row-value">${weapon.ammo < 0 ? 'INF' : weapon.ammo}</strong>
                                         </button>
                                     `).join('')}
@@ -1547,9 +1622,10 @@ function renderShopScreen() {
                                     ${SHOP_WEAPON_ORDER.map((type) => {
                                         const price = getWeaponShopPrice(type, currentSettings.weaponCostMultiplier);
                                         const locked = price === null;
+                                        const unaffordable = !locked && focusPlayer.credits < price;
                                         return `
-                                            <button class="store-item tidy-store-item ${selection?.source === 'market' && selection.weaponType === type ? 'selected' : ''} ${locked ? 'disabled' : ''}" data-action="select-weapon" data-player-id="${focusPlayer.id}" data-source="market" data-weapon="${type}" ${focusPlayer.shopReady || locked ? 'disabled' : ''}>
-                                                <span class="shop-row-main"><span class="weapon-name">${WEAPON_DEFINITIONS[type].name}</span><small>${locked ? 'Unavailable' : 'Acquire'}</small></span>
+                                            <button class="store-item tidy-store-item ${selection?.source === 'market' && selection.weaponType === type ? 'selected' : ''} ${locked ? 'disabled' : ''} ${unaffordable ? 'unaffordable' : ''}" data-action="select-weapon" data-player-id="${focusPlayer.id}" data-source="market" data-weapon="${type}" ${focusPlayer.shopReady || locked ? 'disabled' : ''}>
+                                                <span class="shop-row-main"><span class="weapon-name">${WEAPON_DEFINITIONS[type].name}</span></span>
                                                 <strong class="shop-row-value">${price === null ? 'LOCK' : `${price} cr`}</strong>
                                             </button>
                                         `;
@@ -1611,6 +1687,7 @@ function renderShopScreen() {
             </div>
         </div>
     `;
+    restoreShopScrollState();
 }
 
 function getRoundRankings(players: RoundSummary['players'], winnerId: string | null) {
@@ -1622,6 +1699,28 @@ function getRoundRankings(players: RoundSummary['players'], winnerId: string | n
             || right.stats.hits - left.stats.hits
             || left.stats.damageTaken - right.stats.damageTaken;
     });
+}
+
+function calculateRoundCreditGain(summary: RoundSummary, playerId: string, settings: MatchSettings) {
+    const player = summary.players.find((entry) => entry.id === playerId);
+    if (!player) return 0;
+
+    let gained = 0;
+    if (settings.scoring.awardDamage) {
+        gained += player.stats.damage * settings.scoring.damagePointValue;
+    }
+    if (settings.scoring.awardKills) {
+        gained += player.stats.kills * settings.scoring.killPointValue;
+    }
+    if (settings.scoring.awardPlacement) {
+        const rankings = getRoundRankings(summary.players, summary.winnerId);
+        const placement = rankings.findIndex((entry) => entry.id === playerId);
+        if (placement === 0) gained += settings.scoring.firstPlacePoints;
+        if (placement === 1) gained += settings.scoring.secondPlacePoints;
+        if (placement === 2) gained += settings.scoring.thirdPlacePoints;
+    }
+
+    return gained;
 }
 
 function buildRoundAccolades(players: RoundSummary['players'], winnerId: string | null) {
@@ -1755,6 +1854,8 @@ function updateGameHud(snapshot: HudSnapshot) {
     latestHudSnapshot = snapshot;
     hudPilot.textContent = snapshot.pilotLabel;
     hudPilot.style.color = snapshot.turnColor;
+    hudShieldFill.style.width = `${Math.max(0, Math.min(100, snapshot.shieldPercent * 100))}%`;
+    hudShieldFill.style.background = '#62e7ff';
     hudHealthFill.style.width = `${Math.max(0, Math.min(100, snapshot.healthPercent * 100))}%`;
     hudHealthFill.style.background = snapshot.turnColor;
     const ammoDetail = snapshot.weaponLabel.includes('|') ? snapshot.weaponLabel.split('|').slice(1).join('|').trim() : snapshot.weaponLabel;
@@ -1778,7 +1879,6 @@ function updateGameHud(snapshot: HudSnapshot) {
     syncBoardTabs();
     renderBoard(snapshot);
 }
-
 function renderBoard(snapshot: HudSnapshot) {
     const entries = [...snapshot.scoreboard].sort((left, right) => activeBoardTab === 'battle'
         ? right.damage - left.damage || right.kills - left.kills || right.score - left.score
@@ -1810,6 +1910,8 @@ function resetHud() {
     latestHudSnapshot = null;
     hudPilot.textContent = 'No active pilot';
     hudPilot.style.color = '#fff4d7';
+    hudShieldFill.style.width = '0%';
+    hudShieldFill.style.background = '#62e7ff';
     hudHealthFill.style.width = '100%';
     hudHealthFill.style.background = '#9de64e';
     hudWeapon.textContent = 'Ammo | Blast | Damage';
@@ -1826,7 +1928,6 @@ function resetHud() {
     syncBoardTabs();
     scoreboard.innerHTML = '<p class="hud-subline">Battle and campaign standings will update here once the battle starts.</p>';
 }
-
 function toCampaignPlayer(player: LobbyPlayer): CampaignPlayer {
     return {
         id: player.id,
@@ -1835,22 +1936,22 @@ function toCampaignPlayer(player: LobbyPlayer): CampaignPlayer {
         loadout: player.loadout,
         isHost: player.isHost,
         weapons: createWeaponsForLoadout(player.loadout),
+        shield: 0,
         credits: 0,
         shopReady: false,
         stats: createEmptyStats(player.id)
     };
 }
-
 function toPlayerSetup(player: CampaignPlayer): PlayerSetup {
     return {
         id: player.id,
         name: player.name,
         color: player.color,
         loadout: player.loadout,
-        weapons: player.weapons.map((weapon) => ({ ...weapon }))
+        weapons: player.weapons.map((weapon) => ({ ...weapon })),
+        shield: player.shield
     };
 }
-
 function createEmptyStats(id: string): PlayerStatsSnapshot {
     return {
         id,
@@ -1881,6 +1982,23 @@ function escapeHtml(value: string) {
 function escapeAttribute(value: string) {
     return escapeHtml(value);
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 

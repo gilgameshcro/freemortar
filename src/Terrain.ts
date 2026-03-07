@@ -130,6 +130,47 @@ export class Terrain {
         this.dirty = true;
     }
 
+    public raiseWall(centerX: number, baseY: number, halfWidth: number, height: number, color: string) {
+        const left = clamp(Math.round(centerX - halfWidth), 0, this.width - 1);
+        const right = clamp(Math.round(centerX + halfWidth), 0, this.width - 1);
+        const bottom = clamp(Math.round(baseY), 0, this.height - 1);
+        const top = clamp(Math.round(baseY - height), 0, this.height - 1);
+
+        for (let x = left; x <= right; x += 1) {
+            for (let y = top; y <= bottom; y += 1) {
+                const inset = Math.abs(x - centerX) > Math.max(0, halfWidth - 1) ? 1 : 0;
+                const finalY = clamp(y + inset, 0, this.height - 1);
+                const index = this.index(x, finalY);
+                this.cells[index] = 1;
+                this.cellColors[index] = this.packColor(color);
+            }
+        }
+
+        this.refreshSurface(left, right);
+        this.collapsePending = true;
+        this.dirty = true;
+    }
+
+    public raiseBridge(centerX: number, centerY: number, halfWidth: number, thickness: number, color: string) {
+        const left = clamp(Math.round(centerX - halfWidth), 0, this.width - 1);
+        const right = clamp(Math.round(centerX + halfWidth), 0, this.width - 1);
+        const top = clamp(Math.round(centerY - thickness / 2), 0, this.height - 1);
+        const bottom = clamp(Math.round(centerY + thickness / 2), 0, this.height - 1);
+
+        for (let x = left; x <= right; x += 1) {
+            const taper = Math.round(Math.abs(x - centerX) / Math.max(1, halfWidth) * 2);
+            for (let y = top + taper; y <= bottom; y += 1) {
+                const index = this.index(x, y);
+                this.cells[index] = 1;
+                this.cellColors[index] = this.packColor(color);
+            }
+        }
+
+        this.refreshSurface(left, right);
+        this.collapsePending = true;
+        this.dirty = true;
+    }
+
     public stepCollapse(maxMoves = 1800) {
         if (!this.collapsePending) return false;
 
@@ -408,3 +449,5 @@ export class Terrain {
         return a + (b - a) * t;
     }
 }
+
+

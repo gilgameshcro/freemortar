@@ -1,6 +1,39 @@
 export type LoadoutId = 'balanced' | 'siege' | 'duelist';
 
-export type WeaponType = 'cannon' | 'mortar' | 'needle' | 'nova' | 'merv' | 'chaos';
+export type WeaponType =
+    | 'cannon'
+    | 'mortar'
+    | 'needle'
+    | 'nova'
+    | 'merv'
+    | 'chaos'
+    | 'chaos_mirv'
+    | 'driller'
+    | 'blast_bomb'
+    | 'autocannon'
+    | 'wall'
+    | 'large_wall'
+    | 'bunker_buster'
+    | 'homing_missile'
+    | 'bridge'
+    | 'relocator'
+    | 'leech'
+    | 'blossom'
+    | 'sinker'
+    | 'crossfire'
+    | 'large_cannon'
+    | 'large_mortar'
+    | 'large_needle'
+    | 'large_nova'
+    | 'large_merv'
+    | 'large_chaos'
+    | 'large_chaos_mirv'
+    | 'large_driller'
+    | 'large_blast_bomb'
+    | 'large_autocannon'
+    | 'shield_small'
+    | 'shield_medium'
+    | 'shield_large';
 
 export type WindMode = 'variable' | 'constant' | 'disabled';
 
@@ -53,6 +86,7 @@ export interface PlayerSetup {
     color: string;
     loadout: LoadoutId;
     weapons?: WeaponState[];
+    shield?: number;
 }
 
 export interface PlayerSnapshot {
@@ -60,6 +94,8 @@ export interface PlayerSnapshot {
     x: number;
     y: number;
     health: number;
+    shield: number;
+    maxShield: number;
     angle: number;
     power: number;
     selectedWeaponIndex: number;
@@ -107,6 +143,7 @@ export interface ShopPlayerSnapshot {
     credits: number;
     shopReady: boolean;
     weapons: WeaponState[];
+    shield: number;
     stats: PlayerStatsSnapshot;
 }
 
@@ -142,6 +179,8 @@ export type GameMessage =
         kind: 'SHOT_RESULT';
         impactX: number;
         impactY: number;
+        impactDirX: number;
+        impactDirY: number;
         weaponType: WeaponType;
         damageEvents: DamageEvent[];
         playerStates: PlayerSnapshot[];
@@ -166,6 +205,7 @@ export type GameMessage =
         credits: number;
         shopReady: boolean;
         weapons: WeaponState[];
+        shield: number;
     }
     | {
         kind: 'SHOP_SYNC';
@@ -173,3 +213,4 @@ export type GameMessage =
         campaignComplete: boolean;
         players: ShopPlayerSnapshot[];
     };
+

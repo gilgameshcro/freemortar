@@ -3,6 +3,7 @@ import {
     clamp,
     cloneWeapons,
     getMaxPowerForHealth,
+    isCombatWeapon,
     lerp,
     LOGICAL_HEIGHT,
     LOGICAL_WIDTH,
@@ -58,6 +59,7 @@ export interface HudSnapshot {
     turnColor: string;
     roundLabel: string;
     campaignLabel: string;
+    shieldPercent: number;
     healthPercent: number;
     weaponLabel: string;
     weaponDetail: string;
@@ -118,6 +120,7 @@ export interface RoundSummaryPlayer {
     name: string;
     color: string;
     weapons: WeaponState[];
+    shield: number;
     stats: PlayerStatsSnapshot;
 }
 
@@ -157,6 +160,7 @@ export class Game {
 
     private particles: Particle[] = [];
     private projectiles: Projectile[] = [];
+    private pendingProjectiles: Array<{ delayMs: number; projectile: Projectile }> = [];
     private shotTraces: ShotTrace[] = [];
     private damagePopups: DamagePopup[] = [];
     private debris: TerrainDebris[] = [];
@@ -285,7 +289,7 @@ export class Game {
         if (!this.canLocalControlCurrentTank()) return;
         const tank = this.currentPlayer;
         if (!tank) return;
-        if (!tank.weapons[index] || tank.weapons[index].ammo === 0) return;
+        if (!tank.weapons[index] || tank.weapons[index].ammo === 0 || !isCombatWeapon(tank.weapons[index].type)) return;
         tank.selectedWeaponIndex = index;
         this.broadcastAimState();
         this.emitHud();
@@ -311,6 +315,15 @@ export class Game {
     }
 
     private step() {
+        for (let index = this.pendingProjectiles.length - 1; index >= 0; index -= 1) {
+            const pending = this.pendingProjectiles[index];
+            pending.delayMs -= FIXED_STEP_MS;
+            if (pending.delayMs <= 0) {
+                this.projectiles.push(pending.projectile);
+                this.pendingProjectiles.splice(index, 1);
+            }
+        }
+
         for (let index = this.projectiles.length - 1; index >= 0; index -= 1) {
             const projectile = this.projectiles[index];
             const impact = projectile.step(this.terrain, this.players, this.state.gravity, this.state.wind);
@@ -323,15 +336,16 @@ export class Game {
 
             this.projectiles.splice(index, 1);
             this.persistShotTrace(projectile.ownerId, projectile.history);
-            if (projectile.weaponType === 'chaos' && projectile.chaosDepth < 2) {
+            const chaosLimit = this.getChaosFollowupLimit(projectile.weaponType);
+            if (chaosLimit >= 0 && projectile.chaosDepth < chaosLimit) {
                 const followAngle = this.nextChaosAngle(impact.x, impact.y, projectile.ownerId, projectile.chaosDepth);
                 this.projectiles.push(projectile.createChaosFollowup(clamp(impact.x, 2, LOGICAL_WIDTH - 3), clamp(impact.y - 2, 2, LOGICAL_HEIGHT - 3), followAngle));
-                this.audio.playFire('chaos');
+                this.audio.playFire(projectile.weaponType === 'large_chaos' || projectile.weaponType === 'large_chaos_mirv' ? 'large_chaos' : 'chaos');
             }
             if (this.isAuthoritative) {
-                this.resolveShot(projectile.ownerId, projectile.weaponType, impact.x, impact.y);
+                this.resolveShot(projectile.ownerId, projectile.weaponType, impact.x, impact.y, projectile.vx, projectile.vy);
             } else {
-                this.awaitingShotResult = this.projectiles.length > 0;
+                this.awaitingShotResult = this.projectiles.length > 0 || this.pendingProjectiles.length > 0;
             }
         }
 
@@ -356,7 +370,7 @@ export class Game {
 
         if (this.state.phase === 'settling') {
             this.resolveTimer = Math.max(0, this.resolveTimer - FIXED_STEP_MS / 1000);
-            if (this.isAuthoritative && this.resolveTimer <= 0 && !tankMoved && !terrainMoved && !debrisMoved && this.projectiles.length === 0) {
+            if (this.isAuthoritative && this.resolveTimer <= 0 && !tankMoved && !terrainMoved && !debrisMoved && this.projectiles.length === 0 && this.pendingProjectiles.length === 0) {
                 this.advanceTurn();
             }
         }
@@ -374,7 +388,7 @@ export class Game {
                 break;
             case 'SHOT_RESULT':
                 if (!this.isAuthoritative) {
-                    this.applyRemoteShotResult(message.weaponType, message.impactX, message.impactY, message.damageEvents, message.playerStates, message.stats, message.turnNumber);
+                    this.applyRemoteShotResult(message.weaponType, message.impactX, message.impactY, message.impactDirX, message.impactDirY, message.damageEvents, message.playerStates, message.stats, message.turnNumber);
                 }
                 break;
             case 'TURN_STATE':
@@ -445,9 +459,10 @@ export class Game {
         const firedWeapon = tank.consumeSelectedWeapon();
         if (!firedWeapon) return;
 
-        this.recordShot(tank.id);
         const barrelTip = tank.barrelTip;
-        this.projectiles = [new Projectile(barrelTip.x, barrelTip.y, tank.angle, tank.power, tank.id, firedWeapon.type)];
+        this.recordShot(tank.id, this.getWeaponShotCount(firedWeapon.type));
+        const burst = this.createProjectileBurst(barrelTip.x, barrelTip.y, tank.angle, tank.power, tank.id, firedWeapon.type);
+        this.setActiveProjectilesFromBurst(burst, firedWeapon.type);
         this.state.phase = 'projectile';
         this.awaitingShotResult = !this.isAuthoritative;
         this.audio.playFire(firedWeapon.type);
@@ -466,7 +481,6 @@ export class Game {
             });
         }
     }
-
     private spawnNetworkProjectile(message: Extract<GameMessage, { kind: 'SHOT_FIRED' }>) {
         if (message.turnNumber !== this.state.turnNumber) return;
         const player = this.players.find((entry) => entry.id === message.playerId);
@@ -474,30 +488,33 @@ export class Game {
         player.selectedWeaponIndex = clamp(message.weaponIndex, 0, player.weapons.length - 1);
         player.setAim(message.angle, message.power, this.settings.powerRule);
         player.consumeSelectedWeapon();
-        this.projectiles = [new Projectile(message.startX, message.startY, message.angle, message.power, message.playerId, message.weaponType)];
+        const burst = this.createProjectileBurst(message.startX, message.startY, message.angle, message.power, message.playerId, message.weaponType);
+        this.setActiveProjectilesFromBurst(burst, message.weaponType);
         this.state.phase = 'projectile';
         this.awaitingShotResult = true;
         this.audio.playFire(message.weaponType);
     }
-
-    private resolveShot(ownerId: string, weaponType: WeaponType, impactX: number, impactY: number) {
-        const definition = WEAPON_DEFINITIONS[weaponType];
-        this.terrain.carveCircle(impactX, impactY, definition.blastRadius);
-        const damageEvents = this.damagePlayers(ownerId, impactX, impactY, definition.blastRadius, definition.damage);
+    private resolveShot(ownerId: string, weaponType: WeaponType, impactX: number, impactY: number, impactDirX: number, impactDirY: number) {
+        const bursts = this.buildImpactBursts(weaponType, impactX, impactY, impactDirX, impactDirY);
+        const damageEvents = this.applyWeaponImpact(ownerId, weaponType, bursts);
+        const maxBlastRadius = Math.max(1, ...bursts.map((burst) => Math.max(1, burst.radius)));
         this.spawnDamagePopups(damageEvents);
-        this.spawnExplosion(impactX, impactY, weaponType);
-        const hasMoreProjectiles = this.projectiles.length > 0;
+        const hasMoreProjectiles = this.projectiles.length > 0 || this.pendingProjectiles.length > 0;
         this.resolveTimer = hasMoreProjectiles ? 0 : 0.85;
         this.state.phase = hasMoreProjectiles ? 'projectile' : 'settling';
         this.awaitingShotResult = false;
-        this.audio.playExplosion(definition.blastRadius);
-        this.screenShake = Math.max(this.screenShake, definition.blastRadius / 5);
+        if (!this.isSilentImpactWeapon(weaponType)) {
+            this.audio.playExplosion(maxBlastRadius);
+            this.screenShake = Math.max(this.screenShake, maxBlastRadius / 5);
+        }
 
         if (this.network?.role === 'host') {
             this.network.sendGameMessage({
                 kind: 'SHOT_RESULT',
                 impactX,
                 impactY,
+                impactDirX,
+                impactDirY,
                 weaponType,
                 damageEvents,
                 playerStates: this.snapshotPlayers(),
@@ -506,32 +523,41 @@ export class Game {
             });
         }
     }
-
     private applyRemoteShotResult(
         weaponType: WeaponType,
         impactX: number,
         impactY: number,
+        impactDirX: number,
+        impactDirY: number,
         damageEvents: DamageEvent[],
         playerStates: PlayerSnapshot[],
         stats: PlayerStatsSnapshot[],
         turnNumber: number
     ) {
         if (turnNumber !== this.state.turnNumber) return;
-        const definition = WEAPON_DEFINITIONS[weaponType];
-        this.awaitingShotResult = this.projectiles.length > 0;
-        this.terrain.carveCircle(impactX, impactY, definition.blastRadius);
+        const bursts = this.buildImpactBursts(weaponType, impactX, impactY, impactDirX, impactDirY);
+        const maxBlastRadius = Math.max(1, ...bursts.map((burst) => Math.max(1, burst.radius)));
+        this.awaitingShotResult = this.projectiles.length > 0 || this.pendingProjectiles.length > 0;
+        if (this.isUtilityImpactWeapon(weaponType)) {
+            this.applyUtilityImpact(damageEvents[0]?.attackerId ?? this.currentPlayer?.id ?? '', weaponType, bursts);
+        } else {
+            bursts.forEach((burst) => {
+                this.terrain.carveCircle(burst.x, burst.y, burst.radius);
+                this.spawnExplosion(burst.x, burst.y, weaponType);
+            });
+        }
         this.applySnapshots(playerStates);
         this.applyStats(stats);
         this.spawnKillDebrisFromEvents(damageEvents);
         this.spawnDamagePopups(damageEvents);
-        this.spawnExplosion(impactX, impactY, weaponType);
-        const hasMoreProjectiles = this.projectiles.length > 0;
+        const hasMoreProjectiles = this.projectiles.length > 0 || this.pendingProjectiles.length > 0;
         this.resolveTimer = hasMoreProjectiles ? 0 : 0.85;
         this.state.phase = hasMoreProjectiles ? 'projectile' : 'settling';
-        this.audio.playExplosion(definition.blastRadius);
-        this.screenShake = Math.max(this.screenShake, definition.blastRadius / 5);
+        if (!this.isSilentImpactWeapon(weaponType)) {
+            this.audio.playExplosion(maxBlastRadius);
+            this.screenShake = Math.max(this.screenShake, maxBlastRadius / 5);
+        }
     }
-
     private applyTurnState(
         currentPlayerIndex: number,
         wind: number,
@@ -543,6 +569,7 @@ export class Game {
     ) {
         if (roundNumber !== this.roundNumber) return;
         this.projectiles = [];
+        this.pendingProjectiles = [];
         this.awaitingShotResult = false;
         this.applySnapshots(playerStates);
         this.applyStats(stats);
@@ -553,7 +580,6 @@ export class Game {
         this.state.phase = winnerId ? 'game_over' : 'aiming';
         if (winnerId) this.emitRoundEndOnce();
     }
-
     private advanceTurn() {
         const livingPlayers = this.players.filter((player) => player.alive);
         if (livingPlayers.length <= 1) {
@@ -617,6 +643,7 @@ export class Game {
                 id: player.id,
                 name: player.name,
                 color: player.color,
+                shield: player.shield,
                 weapons: cloneWeapons(player.weapons),
                 stats: this.snapshotStats().find((entry) => entry.id === player.id) ?? this.createStatsSnapshot(player.id)
             }))
@@ -633,7 +660,10 @@ export class Game {
                 moved = true;
             }
 
-            if (this.isTankSupported(tank)) {
+            if (tank.y >= LOGICAL_HEIGHT - 1) {
+                tank.y = LOGICAL_HEIGHT - 1;
+                tank.verticalVelocity = 0;
+            } else if (this.isTankSupported(tank)) {
                 tank.verticalVelocity = 0;
             } else {
                 tank.verticalVelocity = Math.min(tank.verticalVelocity + 0.16, 3.6);
@@ -667,6 +697,7 @@ export class Game {
 
     private isTankSupported(tank: Tank) {
         const supportY = Math.round(tank.y + 1);
+        if (supportY >= LOGICAL_HEIGHT - 1) return true;
         for (let x = Math.round(tank.x - tank.bodyWidth / 2 + 1); x <= Math.round(tank.x + tank.bodyWidth / 2 - 1); x += 1) {
             if (this.terrain.isSolid(x, supportY)) return true;
         }
@@ -685,46 +716,52 @@ export class Game {
             if (actualDamage <= 0) continue;
 
             const previousHealth = tank.health;
-            tank.health = Math.max(0, tank.health - actualDamage);
-            tank.syncPowerCap(this.settings.powerRule);
+            const absorbedByShield = tank.applyShieldDamage(actualDamage);
+            const remainingDamage = Math.max(0, actualDamage - absorbedByShield);
+            if (remainingDamage > 0) {
+                tank.health = Math.max(0, tank.health - remainingDamage);
+                tank.syncPowerCap(this.settings.powerRule);
+            }
 
+            const totalDamageTaken = absorbedByShield + remainingDamage;
+            const killed = previousHealth > 0 && tank.health === 0;
             const targetRoundStats = this.roundStatsById.get(tank.id);
-            if (targetRoundStats) targetRoundStats.damageTaken += actualDamage;
+            if (targetRoundStats) targetRoundStats.damageTaken += totalDamageTaken;
             const targetCampaign = this.campaignById.get(tank.id);
-            if (targetCampaign) targetCampaign.totalDamageTaken += actualDamage;
+            if (targetCampaign) targetCampaign.totalDamageTaken += totalDamageTaken;
 
             const isSelfHit = tank.id === ownerId;
             if (!isSelfHit) {
                 const shooterRoundStats = this.roundStatsById.get(ownerId);
                 if (shooterRoundStats) {
-                    shooterRoundStats.damage += actualDamage;
+                    shooterRoundStats.damage += totalDamageTaken;
                     shooterRoundStats.hits += 1;
-                    if (previousHealth > 0 && tank.health === 0) shooterRoundStats.kills += 1;
+                    if (killed) shooterRoundStats.kills += 1;
                 }
 
                 const shooterCampaign = this.campaignById.get(ownerId);
                 if (shooterCampaign) {
-                    shooterCampaign.totalDamage += actualDamage;
+                    shooterCampaign.totalDamage += totalDamageTaken;
                     shooterCampaign.totalHits += 1;
-                    shooterCampaign.score += this.calculateScoreDelta(actualDamage, false);
-                    if (previousHealth > 0 && tank.health === 0) {
+                    shooterCampaign.score += this.calculateScoreDelta(totalDamageTaken, false);
+                    if (killed) {
                         shooterCampaign.totalKills += 1;
                         shooterCampaign.score += this.calculateScoreDelta(0, true);
                     }
                 }
             }
 
-            if (previousHealth > 0 && tank.health === 0) {
+            if (killed) {
                 this.spawnKillDebris(tank);
             }
 
             damageEvents.push({
                 attackerId: ownerId,
                 targetId: tank.id,
-                amount: actualDamage,
+                amount: totalDamageTaken,
                 x: tank.x,
                 y: tank.y - tank.bodyHeight - 3,
-                killed: previousHealth > 0 && tank.health === 0
+                killed
             });
         }
         return damageEvents;
@@ -968,6 +1005,7 @@ export class Game {
                 turnColor: '#fff4d7',
                 roundLabel: 'Round -',
                 campaignLabel: 'Campaign idle',
+                shieldPercent: 0,
                 healthPercent: 0,
                 weaponLabel: '-',
                 weaponDetail: '-',
@@ -1005,10 +1043,11 @@ export class Game {
 
         this.onHudUpdate({
             turnLabel: `Turn ${this.state.turnNumber}`,
-            pilotLabel: `${currentPlayer.name} | HP ${currentPlayer.health}`,
+            pilotLabel: `${currentPlayer.name} | HP ${currentPlayer.health}${currentPlayer.maxShield > 0 ? ` | SH ${currentPlayer.shield}` : ''}`,
             turnColor: currentPlayer.color,
             roundLabel: `Round ${this.roundNumber}/${this.settings.rounds}`,
             campaignLabel: `Round ${this.roundNumber}/${this.settings.rounds} | ${this.settings.terrainCollapse ? 'Collapse on' : 'Collapse off'}`,
+            shieldPercent: currentPlayer.maxShield > 0 ? currentPlayer.shield / currentPlayer.maxShield : 0,
             weaponLabel: `${weaponDefinition.name} | Ammo ${ammoLabel}`,
             healthPercent: currentPlayer.health / 100,
             weaponDetail: `${weaponDefinition.flavor} | Blast ${weaponDefinition.blastRadius} | Damage ${weaponDefinition.damage}`,
@@ -1017,12 +1056,12 @@ export class Game {
             angleLabel: `Angle ${angleDegrees} deg`,
             selectedWeaponIndex: currentPlayer.selectedWeaponIndex,
             canSelectWeapon: this.canLocalControlCurrentTank(),
-            weaponOptions: currentPlayer.weapons.map((entry, index) => ({
+            weaponOptions: currentPlayer.weapons.flatMap((entry, index) => isCombatWeapon(entry.type) ? [{
                 index,
                 label: `${WEAPON_DEFINITIONS[entry.type].name} ${entry.ammo < 0 ? 'INF' : entry.ammo}`,
                 detail: `${WEAPON_DEFINITIONS[entry.type].flavor} | Blast ${WEAPON_DEFINITIONS[entry.type].blastRadius} | Damage ${WEAPON_DEFINITIONS[entry.type].damage}`,
                 disabled: entry.ammo === 0
-            })),
+            }] : []),
             windLabel: windText,
             hintLabel,
             winnerLabel: this.state.phase === 'game_over' ? `${winner?.name ?? 'No one'} wins round ${this.roundNumber}` : '',
@@ -1164,13 +1203,12 @@ export class Game {
         }
     }
 
-    private recordShot(playerId: string) {
+    private recordShot(playerId: string, amount = 1) {
         const round = this.roundStatsById.get(playerId);
-        if (round) round.shots += 1;
+        if (round) round.shots += amount;
         const campaign = this.campaignById.get(playerId);
-        if (campaign) campaign.totalShots += 1;
+        if (campaign) campaign.totalShots += amount;
     }
-
     private createRoundStats(): RoundStats {
         return { damage: 0, hits: 0, kills: 0, shots: 0, damageTaken: 0 };
     }
@@ -1191,13 +1229,217 @@ export class Game {
         };
     }
 
+    private getWeaponShotCount(weaponType: WeaponType) {
+        return weaponType === 'autocannon' || weaponType === 'large_autocannon' ? 5 : 1;
+    }
+
+    private setActiveProjectilesFromBurst(burst: Projectile[], weaponType: WeaponType) {
+        this.pendingProjectiles = [];
+        if (weaponType !== 'autocannon' && weaponType !== 'large_autocannon') {
+            this.projectiles = burst;
+            return;
+        }
+
+        this.projectiles = burst.length ? [burst[0]] : [];
+        this.pendingProjectiles = burst.slice(1).map((projectile, index) => ({
+            delayMs: (index + 1) * 110,
+            projectile
+        }));
+    }
+
+    private getChaosFollowupLimit(weaponType: WeaponType) {
+        if (weaponType === 'chaos' || weaponType === 'chaos_mirv') return 2;
+        if (weaponType === 'large_chaos' || weaponType === 'large_chaos_mirv') return 4;
+        return -1;
+    }
+
+    private createProjectileBurst(startX: number, startY: number, angle: number, power: number, ownerId: string, weaponType: WeaponType) {
+        if (weaponType !== 'autocannon' && weaponType !== 'large_autocannon') {
+            return [new Projectile(startX, startY, angle, power, ownerId, weaponType)];
+        }
+
+        return Array.from({ length: 5 }, (_, index) => {
+            const spread = this.getAutocannonSpread(ownerId, index, weaponType === 'large_autocannon' ? 4 : 3);
+            return new Projectile(
+                startX,
+                startY,
+                angle + spread.angleOffset,
+                Math.max(6, power + spread.powerOffset),
+                ownerId,
+                weaponType
+            );
+        });
+    }
+
+    private getAutocannonSpread(ownerId: string, shotIndex: number, maxOffset: number) {
+        const ownerHash = ownerId.split('').reduce((sum, char) => ((sum * 33) ^ char.charCodeAt(0)) >>> 0, 5381);
+        const seedA = ownerHash + this.state.turnNumber * 97 + shotIndex * 53;
+        const seedB = ownerHash + this.state.turnNumber * 131 + shotIndex * 71;
+        const angleOffset = (this.noise(seedA) * 2 - 1) * (maxOffset * Math.PI / 180);
+        const powerOffset = Math.round((this.noise(seedB) * 2 - 1) * maxOffset);
+        return { angleOffset, powerOffset };
+    }
+
+    private isUtilityImpactWeapon(weaponType: WeaponType) {
+        return weaponType === 'wall' || weaponType === 'large_wall' || weaponType === 'bridge' || weaponType === 'relocator';
+    }
+
+    private isSilentImpactWeapon(weaponType: WeaponType) {
+        return this.isUtilityImpactWeapon(weaponType);
+    }
+
+    private applyUtilityImpact(ownerId: string, weaponType: WeaponType, bursts: Array<{ x: number; y: number; radius: number; damage: number }>) {
+        const primary = bursts[0];
+        if (!primary) return;
+
+        if (weaponType === 'wall') {
+            this.terrain.raiseWall(primary.x, primary.y, 5, 40, '#7b684d');
+            return;
+        }
+
+        if (weaponType === 'large_wall') {
+            this.terrain.raiseWall(primary.x, primary.y, 8, 54, '#8b7454');
+            return;
+        }
+
+        if (weaponType === 'bridge') {
+            this.terrain.raiseBridge(primary.x, primary.y + 2, 26, 6, '#8a7253');
+            return;
+        }
+
+        if (weaponType === 'relocator') {
+            this.relocateTank(ownerId, primary.x);
+        }
+    }
+
+    private relocateTank(ownerId: string, targetX: number) {
+        const tank = this.players.find((entry) => entry.id === ownerId);
+        if (!tank || !tank.alive) return;
+        const spawnX = Math.round(clamp(targetX, 8, LOGICAL_WIDTH - 9));
+        this.terrain.flattenPlatform(spawnX, 8);
+        tank.x = spawnX;
+        tank.y = this.terrain.getSurfaceY(spawnX) - 1;
+        tank.verticalVelocity = 0;
+        tank.syncPowerCap(this.settings.powerRule);
+    }
+
+    private applyWeaponImpact(ownerId: string, weaponType: WeaponType, bursts: Array<{ x: number; y: number; radius: number; damage: number }>) {
+        if (this.isUtilityImpactWeapon(weaponType)) {
+            this.applyUtilityImpact(ownerId, weaponType, bursts);
+            return [];
+        }
+
+        const damageEvents: DamageEvent[] = [];
+        bursts.forEach((burst) => {
+            this.terrain.carveCircle(burst.x, burst.y, burst.radius);
+            damageEvents.push(...this.damagePlayers(ownerId, burst.x, burst.y, burst.radius, burst.damage));
+            this.spawnExplosion(burst.x, burst.y, weaponType);
+        });
+
+        if (weaponType === 'leech') {
+            const leeched = Math.max(0, Math.round(damageEvents.filter((event) => event.targetId !== ownerId).reduce((sum, event) => sum + event.amount, 0) * 0.35));
+            if (leeched > 0) {
+                const owner = this.players.find((entry) => entry.id === ownerId);
+                const restored = owner?.restoreShield(leeched) ?? 0;
+                if (restored > 0 && owner) {
+                    this.damagePopups.push({
+                        x: owner.x,
+                        y: owner.y - owner.bodyHeight - 8,
+                        text: `+${restored} SH`,
+                        color: '#62e7ff',
+                        life: 40
+                    });
+                }
+            }
+        }
+
+        return damageEvents;
+    }
+
+    private buildImpactBursts(weaponType: WeaponType, impactX: number, impactY: number, impactDirX: number, impactDirY: number) {
+        const definition = WEAPON_DEFINITIONS[weaponType];
+        if (this.isUtilityImpactWeapon(weaponType)) {
+            return [{ x: impactX, y: impactY, radius: 0, damage: 0 }];
+        }
+
+        if (weaponType === 'blossom') {
+            return this.applyBurstPattern(impactX, impactY, [
+                { x: 0, y: 0, radius: 8, damage: 18 },
+                { x: 0, y: -14, radius: 7, damage: 16 },
+                { x: 12, y: -8, radius: 7, damage: 16 },
+                { x: 12, y: 8, radius: 7, damage: 16 },
+                { x: 0, y: 14, radius: 7, damage: 16 },
+                { x: -12, y: 8, radius: 7, damage: 16 },
+                { x: -12, y: -8, radius: 7, damage: 16 }
+            ]);
+        }
+
+        if (weaponType === 'sinker') {
+            return Array.from({ length: 7 }, (_, index) => ({
+                x: Math.round(clamp(impactX, 2, LOGICAL_WIDTH - 3)),
+                y: Math.round(clamp(impactY + index * 8, 2, LOGICAL_HEIGHT - 3)),
+                radius: Math.max(4, definition.blastRadius - Math.floor(index / 2)),
+                damage: Math.max(7, definition.damage - index)
+            }));
+        }
+
+        if (weaponType === 'crossfire') {
+            return this.applyBurstPattern(impactX, impactY, [
+                { x: 0, y: 0, radius: 8, damage: 18 },
+                { x: 16, y: 0, radius: 7, damage: 15 },
+                { x: -16, y: 0, radius: 7, damage: 15 },
+                { x: 0, y: 16, radius: 7, damage: 15 },
+                { x: 0, y: -16, radius: 7, damage: 15 },
+                { x: 32, y: 0, radius: 6, damage: 12 },
+                { x: -32, y: 0, radius: 6, damage: 12 },
+                { x: 0, y: 32, radius: 6, damage: 12 },
+                { x: 0, y: -32, radius: 6, damage: 12 }
+            ]);
+        }
+
+        const isDriller = weaponType === 'driller' || weaponType === 'large_driller';
+        if (isDriller) {
+            const directionLength = Math.hypot(impactDirX, impactDirY) || 1;
+            const dirX = impactDirX / directionLength;
+            const dirY = impactDirY / directionLength;
+            const count = weaponType === 'large_driller' ? 10 : 8;
+            const spacing = weaponType === 'large_driller' ? 8 : 7;
+            const bursts: Array<{ x: number; y: number; radius: number; damage: number }> = [];
+            for (let index = 0; index < count; index += 1) {
+                const distance = index * spacing;
+                bursts.push({
+                    x: Math.round(clamp(impactX + dirX * distance, 2, LOGICAL_WIDTH - 3)),
+                    y: Math.round(clamp(impactY + dirY * distance, 2, LOGICAL_HEIGHT - 3)),
+                    radius: Math.max(4, definition.blastRadius - Math.floor(index / 3)),
+                    damage: Math.max(6, definition.damage - index)
+                });
+            }
+            return bursts;
+        }
+
+        return [{ x: impactX, y: impactY, radius: definition.blastRadius, damage: definition.damage }];
+    }
+
+    private applyBurstPattern(impactX: number, impactY: number, pattern: Array<{ x: number; y: number; radius: number; damage: number }>) {
+        return pattern.map((burst) => ({
+            x: Math.round(clamp(impactX + burst.x, 2, LOGICAL_WIDTH - 3)),
+            y: Math.round(clamp(impactY + burst.y, 2, LOGICAL_HEIGHT - 3)),
+            radius: burst.radius,
+            damage: burst.damage
+        }));
+    }
+
+    private noise(seed: number) {
+        const value = Math.sin(seed * 12.9898) * 43758.5453;
+        return value - Math.floor(value);
+    }
+
     private nextChaosAngle(impactX: number, impactY: number, ownerId: string, depth: number) {
         const ownerHash = ownerId.split('').reduce((sum, char) => ((sum * 33) ^ char.charCodeAt(0)) >>> 0, 5381);
         const seed = Math.sin((impactX + 17) * 12.9898 + (impactY + 41) * 78.233 + ownerHash * 0.013 + depth * 19.19);
         const normalized = seed - Math.floor(seed);
         return -Math.PI + 0.28 + normalized * (Math.PI - 0.56);
     }
-
     private nextWind() {
         if (this.settings.windMode === 'disabled') return 0;
         if (this.settings.windMode === 'constant') return this.constantWindValue;
@@ -1215,6 +1457,15 @@ export class Game {
         return `rgba(${(bigint >> 16) & 255}, ${(bigint >> 8) & 255}, ${bigint & 255}, ${alpha})`;
     }
 }
+
+
+
+
+
+
+
+
+
 
 
 
