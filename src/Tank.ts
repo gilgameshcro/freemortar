@@ -55,7 +55,7 @@ export class Tank {
     }
 
     public setAim(angle: number, power: number, powerRule: PowerRule) {
-        this.angle = Math.max(-Math.PI + 0.12, Math.min(-0.12, angle));
+        this.angle = Math.max(-Math.PI + 0.12, Math.min(1.18, angle));
         this.power = Math.max(6, Math.min(this.getMaxPower(powerRule), power));
     }
 
@@ -166,4 +166,5 @@ export class Tank {
         ctx.restore();
     }
 }
+
 

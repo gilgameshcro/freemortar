@@ -8,6 +8,8 @@ export type PowerRule = 'static' | 'health_linked';
 
 export type RoundOrderMode = 'player_number' | 'random' | 'winning_order' | 'reverse_winning_order';
 
+export type TerrainTheme = 'rolling' | 'flats' | 'hills' | 'mountains' | 'highlands' | 'divide';
+
 export interface ScoringSettings {
     awardDamage: boolean;
     damagePointValue: number;
@@ -22,6 +24,7 @@ export interface ScoringSettings {
 export interface MatchSettings {
     windMode: WindMode;
     maxWind: number;
+    terrainThemes: TerrainTheme[];
     terrainCollapse: boolean;
     powerRule: PowerRule;
     rounds: number;

@@ -2153,3 +2153,562 @@ canvas {
         grid-template-columns: 1fr;
     }
 }
+
+.compact-livebar {
+    padding: 10px 14px;
+    gap: 12px;
+}
+
+.compact-livebar h2 {
+    font-size: 1.45rem;
+}
+
+.compact-livebar .eyebrow {
+    margin-bottom: 4px;
+    font-size: 0.66rem;
+}
+
+.compact-livebar .pixel-button {
+    padding: 8px 12px;
+    box-shadow: 0 5px 0 rgba(0, 0, 0, 0.28);
+    font-size: 0.8rem;
+}
+
+.compact-livebar .volume-stack.compact {
+    min-width: 112px;
+}
+
+.compact-livebar .field-label.compact {
+    margin: 0 0 4px;
+    font-size: 0.65rem;
+}
+
+.info-chip {
+    width: 34px;
+    height: 34px;
+    border: 2px solid rgba(255, 255, 255, 0.14);
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.08), rgba(0, 0, 0, 0.18));
+    color: var(--text);
+    font-family: Consolas, 'Lucida Console', 'Courier New', monospace;
+    font-weight: 700;
+    text-transform: uppercase;
+}
+
+.compact-hud-row {
+    grid-template-columns: 0.82fr 1.2fr 0.82fr 0.82fr;
+    gap: 10px;
+}
+
+.compact-hud-row .hud-card {
+    padding: 10px 12px;
+}
+
+.pilot-card-live h3,
+.compact-conditions-card h3 {
+    font-size: 1.15rem;
+}
+
+.compact-power-meter {
+    gap: 6px;
+}
+
+.compact-scoreboard-card {
+    width: 246px;
+    padding: 10px 12px;
+    min-height: 240px;
+}
+
+.board-title {
+    margin-bottom: 6px;
+}
+
+.compact-board-header {
+    margin-bottom: 8px;
+}
+
+.arena-layout {
+    grid-template-columns: minmax(0, 1fr) minmax(232px, 246px);
+    gap: 10px;
+}
+
+.arena-main {
+    gap: 0;
+}
+
+.canvas-frame {
+    padding: 8px;
+}
+
+.score-card {
+    gap: 6px;
+}
+
+.score-row,
+.score-card {
+    padding: 8px 10px;
+}
+
+.battle-setup-grid {
+    grid-template-columns: repeat(8, minmax(0, 1fr));
+}
+
+.span-6 {
+    grid-column: span 8;
+}
+
+.span-3 {
+    grid-column: span 3;
+}
+
+.span-2 {
+    grid-column: span 2;
+}
+
+.span-1 {
+    grid-column: span 1;
+}
+
+@media (max-width: 1180px) {
+    .battle-setup-grid,
+    .compact-hud-row,
+    .arena-layout {
+        grid-template-columns: 1fr;
+    }
+}
+
+.setup-drawer {
+    margin-top: 16px;
+    padding: 18px 20px;
+    max-width: none;
+}
+
+.battle-setup-head.compact {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 18px;
+}
+
+.battle-setup-actions {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    flex-wrap: wrap;
+}
+
+.battle-setup-clusters {
+    display: grid;
+    grid-template-columns: 1.2fr 1fr 1.15fr;
+    gap: 14px;
+    align-items: start;
+}
+
+.rules-cluster {
+    display: grid;
+    gap: 12px;
+    min-width: 0;
+    padding: 14px;
+    border: 1px solid rgba(255, 206, 150, 0.16);
+    background: linear-gradient(180deg, rgba(40, 21, 52, 0.68), rgba(14, 8, 22, 0.82));
+}
+
+.cluster-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 14px;
+}
+
+.cluster-head h3 {
+    margin: 4px 0 0;
+    font-size: 1.04rem;
+}
+
+.compact-rules-grid {
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+    gap: 10px;
+}
+
+.compact-rules-grid .span-1 {
+    grid-column: span 1;
+}
+
+.compact-rules-grid .span-2 {
+    grid-column: span 2;
+}
+
+.terrain-pool-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+}
+
+.terrain-chip {
+    position: relative;
+    display: block;
+    min-height: 76px;
+    padding: 12px 12px 12px 40px;
+    border: 1px solid rgba(255, 206, 150, 0.16);
+    background: rgba(12, 8, 20, 0.72);
+    cursor: pointer;
+}
+
+.terrain-chip input {
+    position: absolute;
+    left: 12px;
+    top: 14px;
+    margin: 0;
+    accent-color: #ff9366;
+}
+
+.terrain-chip span {
+    display: grid;
+    gap: 4px;
+}
+
+.terrain-chip strong {
+    color: #fff0d0;
+    font-size: 0.96rem;
+}
+
+.terrain-chip small {
+    color: rgba(255, 225, 188, 0.75);
+    line-height: 1.3;
+}
+
+.terrain-chip:has(input:checked) {
+    border-color: rgba(255, 154, 108, 0.7);
+    box-shadow: 0 0 0 1px rgba(255, 154, 108, 0.28) inset, 0 0 18px rgba(255, 154, 108, 0.12);
+    background: linear-gradient(180deg, rgba(54, 25, 34, 0.88), rgba(16, 10, 24, 0.9));
+}
+
+.compact-scoring-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px 12px;
+}
+
+.compact-scoring-grid .span-2 {
+    grid-column: 1 / -1;
+}
+
+.placement-values {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 8px;
+}
+
+.placement-values span {
+    display: grid;
+    gap: 5px;
+}
+
+.session-panel {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 14px;
+}
+
+.session-panel .mode-card {
+    height: 100%;
+}
+
+.session-panel .pixel-button.active {
+    border-color: rgba(255, 154, 108, 0.7);
+    box-shadow: 0 0 0 1px rgba(255, 154, 108, 0.22) inset;
+}
+
+@media (max-width: 1180px) {
+    .battle-setup-clusters,
+    .session-panel {
+        grid-template-columns: 1fr;
+    }
+
+    .terrain-pool-grid,
+    .compact-scoring-grid,
+    .placement-values {
+        grid-template-columns: 1fr;
+    }
+}
+.setup-drawer {
+    padding: 14px 16px;
+}
+
+.battle-setup-head.compact {
+    gap: 12px;
+}
+
+.battle-setup-actions .pixel-button {
+    padding: 8px 12px;
+}
+
+.battle-setup-clusters {
+    grid-template-columns: 1.1fr 0.9fr 1fr;
+    gap: 10px;
+}
+
+.rules-cluster {
+    gap: 10px;
+    padding: 10px 11px;
+}
+
+.cluster-head h3 {
+    font-size: 0.96rem;
+}
+
+.cluster-head .field-help {
+    font-size: 0.7rem;
+}
+
+.compact-rules-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 8px;
+}
+
+.compact-rules-grid .setting-field .field-label {
+    font-size: 0.62rem;
+    letter-spacing: 0.08em;
+}
+
+.compact-rules-grid .pixel-input,
+.compact-rules-grid .pixel-select {
+    padding: 8px 9px;
+    font-size: 0.82rem;
+}
+
+.compact-rules-grid .span-2 {
+    grid-column: span 2;
+}
+
+.compact-rules-grid .span-1 {
+    grid-column: span 1;
+}
+
+.compact-rules-grid .setting-toggle {
+    min-height: 0;
+    align-self: center;
+}
+
+.terrain-pool-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+}
+
+.terrain-chip {
+    min-height: 0;
+    padding: 9px 10px 9px 34px;
+}
+
+.terrain-chip input {
+    left: 10px;
+    top: 10px;
+}
+
+.terrain-chip strong {
+    font-size: 0.84rem;
+}
+
+.terrain-chip small {
+    display: none;
+}
+
+.compact-scoring-grid {
+    grid-template-columns: 1fr;
+    gap: 8px;
+}
+
+.compact-scoring-grid .rule-row {
+    grid-template-columns: 1fr;
+    gap: 6px;
+    padding: 8px 10px;
+}
+
+.compact-scoring-grid .rule-toggle {
+    font-size: 0.84rem;
+}
+
+.compact-scoring-grid .rule-value {
+    justify-content: flex-start;
+    align-items: flex-start;
+    flex-wrap: wrap;
+    gap: 6px;
+    font-size: 0.72rem;
+}
+
+.compact-scoring-grid .compact-input {
+    width: 72px;
+    padding: 6px 7px;
+    font-size: 0.8rem;
+}
+
+.placement-values {
+    grid-template-columns: repeat(3, minmax(0, 70px));
+    gap: 6px;
+}
+
+.placement-values span {
+    gap: 3px;
+    font-size: 0.64rem;
+}
+
+.placement-input {
+    width: 66px;
+}
+
+.shop-shell {
+    grid-template-columns: minmax(0, 1fr) 250px;
+    gap: 14px;
+}
+
+.shop-main-panel,
+.tidy-shop-sidebar {
+    padding: 14px;
+}
+
+.shop-header-clean {
+    margin-bottom: 10px;
+    gap: 12px;
+}
+
+.shop-head-meta {
+    display: grid;
+    gap: 3px;
+    justify-items: end;
+    text-align: right;
+}
+
+.shop-focus-name {
+    font-size: 1.36rem;
+    color: var(--accent, #fff0d0);
+    text-shadow: 0 0 18px color-mix(in srgb, var(--accent, #fff0d0) 35%, transparent);
+}
+
+.shop-credit-stack small {
+    display: block;
+    color: rgba(255, 228, 194, 0.7);
+    font-size: 0.66rem;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+}
+
+.shop-credits {
+    font-size: 1.4rem;
+    line-height: 1;
+    color: var(--accent, #fff0d0);
+}
+
+.tidy-shop-columns {
+    grid-template-columns: minmax(0, 0.92fr) minmax(0, 0.92fr) 280px;
+    gap: 12px;
+    align-items: start;
+}
+
+.tidy-weapon-list,
+.tidy-store-list {
+    margin: 0;
+    gap: 6px;
+    align-content: start;
+}
+
+.tidy-inventory-column,
+.tidy-market-column,
+.shop-detail-panel {
+    align-self: start;
+}
+
+.tidy-weapon-chip,
+.tidy-store-item {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 8px;
+    padding: 8px 10px;
+    min-height: 0;
+}
+
+.shop-row-main {
+    display: grid;
+    gap: 2px;
+    min-width: 0;
+}
+
+.shop-row-main small {
+    color: rgba(255, 227, 197, 0.58);
+    font-size: 0.64rem;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+}
+
+.shop-row-value {
+    align-self: center;
+    font-size: 0.84rem;
+}
+
+.weapon-name {
+    display: block;
+    font-size: 0.88rem;
+    line-height: 1.12;
+}
+
+.shop-detail-panel {
+    padding: 12px;
+    gap: 10px;
+}
+
+.weapon-preview-art {
+    height: 144px;
+}
+
+.weapon-preview-core {
+    width: 68px;
+    height: 68px;
+    border-radius: 18px;
+    background: linear-gradient(135deg, color-mix(in srgb, var(--accent) 78%, #fff 22%), color-mix(in srgb, var(--accent) 34%, #0b0710 66%));
+    box-shadow: 0 0 0 2px rgba(255,255,255,0.08) inset, 0 0 24px color-mix(in srgb, var(--accent) 28%, transparent);
+}
+
+.weapon-preview-art[data-weapon-type="mortar"] .weapon-preview-core {
+    width: 54px;
+    height: 82px;
+    border-radius: 18px 18px 24px 24px;
+}
+
+.weapon-preview-art[data-weapon-type="needle"] .weapon-preview-core {
+    width: 18px;
+    height: 94px;
+    border-radius: 999px;
+}
+
+.weapon-preview-art[data-weapon-type="nova"] .weapon-preview-core {
+    width: 84px;
+    height: 84px;
+    border-radius: 50%;
+    clip-path: polygon(50% 0%, 62% 30%, 100% 50%, 62% 70%, 50% 100%, 38% 70%, 0% 50%, 38% 30%);
+}
+
+.weapon-preview-art[data-weapon-type="merv"] .weapon-preview-core {
+    width: 88px;
+    height: 62px;
+    border-radius: 18px;
+    clip-path: polygon(10% 50%, 30% 16%, 50% 50%, 70% 16%, 90% 50%, 70% 84%, 50% 50%, 30% 84%);
+}
+
+.weapon-preview-art[data-weapon-type="chaos"] .weapon-preview-core {
+    width: 86px;
+    height: 86px;
+    border-radius: 24px;
+    clip-path: polygon(14% 24%, 52% 8%, 86% 22%, 72% 48%, 92% 78%, 44% 92%, 12% 68%, 26% 44%);
+}
+
+.shop-footer-actions {
+    margin-top: 10px;
+}
+
+@media (max-width: 1180px) {
+    .compact-rules-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .shop-shell,
+    .tidy-shop-columns {
+        grid-template-columns: 1fr;
+    }
+}

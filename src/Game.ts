@@ -21,10 +21,16 @@ import type {
     MatchStartPayload,
     PlayerSnapshot,
     PlayerStatsSnapshot,
+    TerrainTheme,
     WeaponState,
     WeaponType
 } from './types';
 
+function pickTerrainTheme(themes: TerrainTheme[], seed: number): TerrainTheme {
+    const pool: TerrainTheme[] = themes.length ? themes : ['rolling'];
+    const index = Math.abs(seed) % pool.length;
+    return pool[index];
+}
 interface HudWeaponOption {
     index: number;
     label: string;
@@ -170,21 +176,23 @@ export class Game {
         if (!tank) return;
 
         let changedAim = false;
+        const angleStep = event.ctrlKey ? Math.PI / 180 : 0.045;
+        const powerStep = event.ctrlKey ? 1 : 4;
         switch (event.key) {
             case 'ArrowLeft':
-                tank.setAim(tank.angle - 0.045, tank.power, this.settings.powerRule);
+                tank.setAim(tank.angle - angleStep, tank.power, this.settings.powerRule);
                 changedAim = true;
                 break;
             case 'ArrowRight':
-                tank.setAim(tank.angle + 0.045, tank.power, this.settings.powerRule);
+                tank.setAim(tank.angle + angleStep, tank.power, this.settings.powerRule);
                 changedAim = true;
                 break;
             case 'ArrowUp':
-                tank.setAim(tank.angle, tank.power + 4, this.settings.powerRule);
+                tank.setAim(tank.angle, tank.power + powerStep, this.settings.powerRule);
                 changedAim = true;
                 break;
             case 'ArrowDown':
-                tank.setAim(tank.angle, tank.power - 4, this.settings.powerRule);
+                tank.setAim(tank.angle, tank.power - powerStep, this.settings.powerRule);
                 changedAim = true;
                 break;
             case 'q':
@@ -223,7 +231,7 @@ export class Game {
 
         this.ctx = context;
         this.ctx.imageSmoothingEnabled = false;
-        this.terrain = new Terrain(LOGICAL_WIDTH, LOGICAL_HEIGHT, options.seed);
+        this.terrain = new Terrain(LOGICAL_WIDTH, LOGICAL_HEIGHT, options.seed, pickTerrainTheme(options.settings.terrainThemes, options.seed));
         this.players = options.players.map((player) => new Tank(player));
         this.localPlayerId = options.localPlayerId;
         this.network = options.network;
@@ -980,7 +988,7 @@ export class Game {
         const weapon = currentPlayer.currentWeapon;
         const weaponDefinition = WEAPON_DEFINITIONS[weapon.type];
         const ammoLabel = weapon.ammo < 0 ? 'INF' : `${weapon.ammo}`;
-        const angleDegrees = Math.round(Math.abs(currentPlayer.angle * 180 / Math.PI));
+        const angleDegrees = Math.round(currentPlayer.angle * 180 / Math.PI);
         const currentMaxPower = getMaxPowerForHealth(currentPlayer.health, this.settings.powerRule);
         const windText = this.settings.windMode === 'disabled'
             ? 'Wind disabled'
@@ -990,7 +998,7 @@ export class Game {
         const hintLabel = this.state.phase === 'game_over'
             ? `${winner?.name ?? 'No one'} won the round. Open the debrief and shop to continue.`
             : this.canLocalControlCurrentTank()
-                ? 'Arrow left/right aims, arrow up/down charges power, Q/E swaps weapons, space fires.'
+                ? 'Arrow left/right aims, arrow up/down charges power, hold Ctrl for fine adjustment, Q/E swaps weapons, space fires.'
                 : this.awaitingShotResult || this.projectiles.length > 0
                     ? 'Shot is resolving. Waiting for impact, debris, and terrain collapse.'
                     : `Waiting for ${currentPlayer.name} to act.`;
@@ -1119,17 +1127,31 @@ export class Game {
 
     private placePlayers() {
         const count = this.players.length;
-        for (let index = 0; index < count; index += 1) {
-            const spawnX = Math.round(lerp(56, LOGICAL_WIDTH - 56, (index + 1) / (count + 1)));
-            this.terrain.flattenPlatform(spawnX, 9);
+        const spawnXs: number[] = [];
+        const minSpacing = Math.max(28, Math.floor(LOGICAL_WIDTH / (count + 3.4)));
+        const edgeMargin = 7;
+
+        for (let attempts = 0; attempts < 240 && spawnXs.length < count; attempts += 1) {
+            const candidate = Math.round(edgeMargin + this.nextRandom() * (LOGICAL_WIDTH - edgeMargin * 2));
+            if (spawnXs.every((spawnX) => Math.abs(spawnX - candidate) >= minSpacing)) {
+                spawnXs.push(candidate);
+            }
+        }
+
+        while (spawnXs.length < count) {
+            const fallback = Math.round(lerp(edgeMargin, LOGICAL_WIDTH - edgeMargin, (spawnXs.length + 1) / (count + 1)));
+            spawnXs.push(fallback);
+        }
+
+        spawnXs.forEach((spawnX, index) => {
+            this.terrain.flattenPlatform(spawnX, 8);
             const tank = this.players[index];
             tank.x = spawnX;
             tank.y = this.terrain.getSurfaceY(spawnX) - 1;
             tank.verticalVelocity = 0;
             tank.syncPowerCap(this.settings.powerRule);
-        }
+        });
     }
-
     private generateBackdrop() {
         this.stars.length = 0;
         for (let index = 0; index < 60; index += 1) {
@@ -1193,6 +1215,8 @@ export class Game {
         return `rgba(${(bigint >> 16) & 255}, ${(bigint >> 8) & 255}, ${bigint & 255}, ${alpha})`;
     }
 }
+
+
 
 
 

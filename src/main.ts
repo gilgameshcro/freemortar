@@ -27,6 +27,7 @@ import type {
     PowerRule,
     RoundOrderMode,
     ScoringSettings,
+    TerrainTheme,
     WeaponState,
     WeaponType,
     WindMode
@@ -37,7 +38,17 @@ type IntermissionStage = 'hidden' | 'victory' | 'stats' | 'campaign' | 'shop';
 type LocalProfile = { name: string; color: string; loadout: LoadoutId };
 type ShopSelection = { playerId: string; weaponType: WeaponType; source: 'market' | 'stock' };
 
+type SetupLaunchMode = 'online-host' | 'local';
+
 const SHOP_WEAPON_ORDER: WeaponType[] = ['mortar', 'needle', 'nova', 'merv', 'chaos'];
+const TERRAIN_OPTIONS: Array<{ value: TerrainTheme; name: string; blurb: string }> = [
+    { value: 'rolling', name: 'Rolling', blurb: 'Balanced ridges and valleys.' },
+    { value: 'flats', name: 'Flats', blurb: 'Low contour, shallow craters.' },
+    { value: 'hills', name: 'Hills', blurb: 'Layered humps and firing pockets.' },
+    { value: 'mountains', name: 'Mountains', blurb: 'Extreme peaks with deep cuts.' },
+    { value: 'highlands', name: 'Highlands', blurb: 'Massive plateaus over low plains.' },
+    { value: 'divide', name: 'Divide', blurb: 'One side high, one side low.' }
+];
 
 type CampaignPlayer = {
     id: string;
@@ -57,7 +68,7 @@ const DEFAULT_SCORING: ScoringSettings = {
     awardKills: true,
     killPointValue: 50,
     awardPlacement: true,
-    firstPlacePoints: 1000,
+    firstPlacePoints: 100,
     secondPlacePoints: 50,
     thirdPlacePoints: 25
 };
@@ -65,6 +76,7 @@ const DEFAULT_SCORING: ScoringSettings = {
 const DEFAULT_SETTINGS: MatchSettings = {
     windMode: 'variable',
     maxWind: 0.45,
+    terrainThemes: TERRAIN_OPTIONS.map((option) => option.value),
     terrainCollapse: true,
     powerRule: 'health_linked',
     rounds: 1,
@@ -120,92 +132,13 @@ app.innerHTML = `
                 </div>
             </section>
 
-            <section class="pixel-panel rules-panel battle-setup-panel">
-                <div class="battle-setup-head">
-                    <div>
-                        <p class="eyebrow">MATCH RULES</p>
-                        <h2>Battle Setup</h2>
-                    </div>
-                    <p class="field-help settings-help">These settings apply to local matches and to online rooms you host. Joiners can inspect them, but only the host controls them.</p>
-                </div>
-                <div class="battle-setup-grid">
-                    <label class="setting-field span-3" for="powerRule">
-                        <span class="field-label">Power Cap</span>
-                        <select id="powerRule" class="pixel-select">
-                            <option value="health_linked">HP Linked (200 max, -2 per HP lost)</option>
-                            <option value="static">Static</option>
-                        </select>
-                    </label>
-                    <label class="setting-field span-2" for="windMode">
-                        <span class="field-label">Wind Mode</span>
-                        <select id="windMode" class="pixel-select">
-                            <option value="variable">Variable</option>
-                            <option value="constant">Constant</option>
-                            <option value="disabled">Disabled</option>
-                        </select>
-                    </label>
-                    <label class="setting-field span-1" for="windMax">
-                        <span class="field-label">Wind Strength</span>
-                        <select id="windMax" class="pixel-select">
-                            <option value="0.25">Low</option>
-                            <option value="0.45" selected>Medium</option>
-                            <option value="0.7">High</option>
-                        </select>
-                    </label>
-                    <label class="setting-field span-1" for="roundCount">
-                        <span class="field-label">Rounds</span>
-                        <input id="roundCount" class="pixel-input" type="number" min="1" max="99" step="1" value="1" />
-                    </label>
-                    <label class="setting-field span-2" for="roundOrder">
-                        <span class="field-label">Round Order</span>
-                        <select id="roundOrder" class="pixel-select">
-                            <option value="player_number">Player Number</option>
-                            <option value="random">Random</option>
-                            <option value="winning_order">Winning Order</option>
-                            <option value="reverse_winning_order">Reverse Winning Order</option>
-                        </select>
-                    </label>
-                    <label class="setting-field span-1" for="weaponCostMultiplier">
-                        <span class="field-label">Weapon Cost</span>
-                        <input id="weaponCostMultiplier" class="pixel-input" type="number" min="0.25" max="5" step="0.25" value="1" />
-                    </label>
-                    <div class="scoring-panel span-6">
-                        <div class="scoring-head">
-                            <label class="field-label">Scoring Rules</label>
-                            <p class="field-help compact-help">Toggle scoring sources and tune their values directly.</p>
-                        </div>
-                        <div class="scoring-rules-grid">
-                            <label class="rule-row" for="scoringDamageToggle">
-                                <span class="rule-toggle"><input id="scoringDamageToggle" type="checkbox" checked /> Damage</span>
-                                <span class="rule-value"><input id="scoringDamageValue" class="pixel-input compact-input" type="number" min="0" max="20" step="1" value="1" /> per point</span>
-                            </label>
-                            <label class="rule-row" for="scoringKillsToggle">
-                                <span class="rule-toggle"><input id="scoringKillsToggle" type="checkbox" checked /> Kills</span>
-                                <span class="rule-value"><input id="scoringKillValue" class="pixel-input compact-input" type="number" min="0" max="5000" step="10" value="50" /> per kill</span>
-                            </label>
-                            <label class="rule-row span-2" for="scoringPlacementToggle">
-                                <span class="rule-toggle"><input id="scoringPlacementToggle" type="checkbox" checked /> Placement</span>
-                                <span class="rule-value placement-values">
-                                    <span><input id="scoringFirstValue" class="pixel-input compact-input placement-input" type="number" min="0" max="10000" step="10" value="1000" /> first</span>
-                                    <span><input id="scoringSecondValue" class="pixel-input compact-input placement-input" type="number" min="0" max="10000" step="10" value="50" /> second</span>
-                                    <span><input id="scoringThirdValue" class="pixel-input compact-input placement-input" type="number" min="0" max="10000" step="10" value="25" /> third</span>
-                                </span>
-                            </label>
-                        </div>
-                    </div>
-                    <label class="toggle-row setting-toggle span-2" for="terrainCollapse">
-                        <input id="terrainCollapse" type="checkbox" checked />
-                        <span>Terrain Collapse</span>
-                    </label>
-                </div>
-            </section>
             <div class="menu-grid session-grid">
                 <section class="pixel-panel session-panel">
                     <div class="mode-card">
                         <div>
                             <p class="eyebrow">ONLINE</p>
                             <h3>Host Match</h3>
-                            <p>Create a room, share the code, and launch automatically when every pilot is ready.</p>
+                            <p>Open the match rules, tighten the setup, then create a room and share the code.</p>
                         </div>
                         <button id="btnHost" class="pixel-button primary">Create Room</button>
                     </div>
@@ -224,7 +157,7 @@ app.innerHTML = `
                         <div>
                             <p class="eyebrow">OFFLINE</p>
                             <h3>Local Skirmish</h3>
-                            <p>Create 2 to 4 local pilots, tune each one, ready them up, then pass the keyboard.</p>
+                            <p>Open the match rules, build the local roster, then pass the keyboard between rounds.</p>
                         </div>
                         <div class="inline-controls">
                             <label class="field-label compact" for="localPlayerCount">Pilots</label>
@@ -234,6 +167,125 @@ app.innerHTML = `
                     </div>
                 </section>
             </div>
+
+            <section id="battleSetupPanel" class="pixel-panel battle-setup-panel setup-drawer hidden">
+                <div class="battle-setup-head compact">
+                    <div>
+                        <p class="eyebrow">MATCH RULES</p>
+                        <h2 id="battleSetupTitle">Battle Setup</h2>
+                        <p id="battleSetupLead" class="field-help settings-help compact-help">Choose the rule set, terrain pool, and scoring before launching.</p>
+                    </div>
+                    <div class="battle-setup-actions">
+                        <button id="btnBattleSetupBack" class="pixel-button ghost" type="button">Back</button>
+                        <button id="btnBattleSetupConfirm" class="pixel-button primary" type="button">Create Match</button>
+                    </div>
+                </div>
+                <div class="battle-setup-clusters">
+                    <section class="rules-cluster">
+                        <div class="cluster-head">
+                            <div>
+                                <p class="eyebrow">ROUND FLOW</p>
+                                <h3>Core rules</h3>
+                            </div>
+                        </div>
+                        <div class="battle-setup-grid compact-rules-grid">
+                            <label class="setting-field span-2" for="powerRule">
+                                <span class="field-label">Power Cap</span>
+                                <select id="powerRule" class="pixel-select">
+                                    <option value="health_linked">HP Linked (200 max, -2 per HP lost)</option>
+                                    <option value="static">Static</option>
+                                </select>
+                            </label>
+                            <label class="setting-field span-1" for="roundCount">
+                                <span class="field-label">Rounds</span>
+                                <input id="roundCount" class="pixel-input" type="number" min="1" max="99" step="1" value="1" />
+                            </label>
+                            <label class="setting-field span-2" for="roundOrder">
+                                <span class="field-label">Round Order</span>
+                                <select id="roundOrder" class="pixel-select">
+                                    <option value="player_number">Player Number</option>
+                                    <option value="random">Random</option>
+                                    <option value="winning_order">Winning Order</option>
+                                    <option value="reverse_winning_order">Reverse Winning Order</option>
+                                </select>
+                            </label>
+                            <label class="setting-field span-1" for="weaponCostMultiplier">
+                                <span class="field-label">Weapon Cost x</span>
+                                <input id="weaponCostMultiplier" class="pixel-input" type="number" min="0.25" max="5" step="0.25" value="1" />
+                            </label>
+                            <label class="setting-field span-2" for="windMode">
+                                <span class="field-label">Wind Mode</span>
+                                <select id="windMode" class="pixel-select">
+                                    <option value="variable">Variable</option>
+                                    <option value="constant">Constant</option>
+                                    <option value="disabled">Disabled</option>
+                                </select>
+                            </label>
+                            <label class="setting-field span-1" for="windMax">
+                                <span class="field-label">Wind Strength</span>
+                                <select id="windMax" class="pixel-select">
+                                    <option value="0.25">Low</option>
+                                    <option value="0.45" selected>Medium</option>
+                                    <option value="0.7">High</option>
+                                </select>
+                            </label>
+                            <label class="toggle-row setting-toggle span-2" for="terrainCollapse">
+                                <input id="terrainCollapse" type="checkbox" checked />
+                                <span>Terrain Collapse</span>
+                            </label>
+                        </div>
+                    </section>
+
+                    <section class="rules-cluster terrain-cluster">
+                        <div class="cluster-head">
+                            <div>
+                                <p class="eyebrow">TERRAIN POOL</p>
+                                <h3>Eligible maps</h3>
+                            </div>
+                            <p class="field-help compact-help">Every round pulls one map from the enabled set.</p>
+                        </div>
+                        <div id="terrainThemePool" class="terrain-pool-grid">
+                            ${TERRAIN_OPTIONS.map((option) => `
+                                <label class="terrain-chip">
+                                    <input type="checkbox" name="terrainThemePool" value="${option.value}" checked />
+                                    <span>
+                                        <strong>${option.name}</strong>
+                                        <small>${option.blurb}</small>
+                                    </span>
+                                </label>
+                            `).join('')}
+                        </div>
+                    </section>
+
+                    <section class="rules-cluster scoring-cluster">
+                        <div class="cluster-head">
+                            <div>
+                                <p class="eyebrow">SCORING</p>
+                                <h3>Point sources</h3>
+                            </div>
+                            <p class="field-help compact-help">Tick what counts, then tune the values.</p>
+                        </div>
+                        <div class="scoring-rules-grid compact-scoring-grid">
+                            <label class="rule-row" for="scoringDamageToggle">
+                                <span class="rule-toggle"><input id="scoringDamageToggle" type="checkbox" checked /> Damage</span>
+                                <span class="rule-value"><input id="scoringDamageValue" class="pixel-input compact-input" type="number" min="0" max="20" step="1" value="1" /> per point</span>
+                            </label>
+                            <label class="rule-row" for="scoringKillsToggle">
+                                <span class="rule-toggle"><input id="scoringKillsToggle" type="checkbox" checked /> Kills</span>
+                                <span class="rule-value"><input id="scoringKillValue" class="pixel-input compact-input" type="number" min="0" max="5000" step="10" value="50" /> per kill</span>
+                            </label>
+                            <label class="rule-row span-2" for="scoringPlacementToggle">
+                                <span class="rule-toggle"><input id="scoringPlacementToggle" type="checkbox" checked /> Placement</span>
+                                <span class="rule-value placement-values">
+                                    <span><input id="scoringFirstValue" class="pixel-input compact-input placement-input" type="number" min="0" max="10000" step="10" value="100" /> first</span>
+                                    <span><input id="scoringSecondValue" class="pixel-input compact-input placement-input" type="number" min="0" max="10000" step="10" value="50" /> second</span>
+                                    <span><input id="scoringThirdValue" class="pixel-input compact-input placement-input" type="number" min="0" max="10000" step="10" value="25" /> third</span>
+                                </span>
+                            </label>
+                        </div>
+                    </section>
+                </div>
+            </section>
 
             <section id="lobbyPanel" class="pixel-panel lobby-panel hidden">
                 <div class="lobby-header">
@@ -249,12 +301,13 @@ app.innerHTML = `
         </section>
 
         <section id="gameScreen" class="screen game-screen hidden">
-            <div class="game-topbar pixel-panel">
-                <div>
+            <div class="game-topbar pixel-panel compact-livebar">
+                <div class="livebar-brand">
                     <p class="eyebrow">MATCH LIVE</p>
                     <h2>FreeMortar Arena</h2>
                 </div>
                 <div class="audio-controls compact-audio">
+                    <button id="btnHelpGame" class="info-chip" type="button">i</button>
                     <button id="btnMuteGame" class="pixel-button ghost">Audio On</button>
                     <button id="btnMusicGame" class="pixel-button ghost">Music On</button>
                     <label class="volume-stack compact" for="volumeRangeGame">
@@ -267,17 +320,14 @@ app.innerHTML = `
 
             <div class="game-status-row compact-hud-row">
                 <section class="pixel-panel hud-card pilot-card-live">
-                    <p class="eyebrow">Active Pilot</p>
                     <h3 id="hudPilot">No active pilot</h3>
                     <div class="health-meter"><div class="health-bar"><span id="hudHealthFill"></span></div></div>
                 </section>
                 <section class="pixel-panel hud-card arsenal-card compact-arsenal-card">
-                    <p class="eyebrow">Arsenal</p>
                     <select id="weaponSelect" class="pixel-select compact"></select>
                     <p id="hudWeapon" class="hud-subline">Ammo | Blast | Damage</p>
                 </section>
                 <section class="pixel-panel hud-card charge-card">
-                    <p class="eyebrow">Charge + Aim</p>
                     <div class="power-meter compact-power-meter">
                         <div class="power-bar"><span id="hudPowerFill"></span></div>
                         <p id="hudPowerLabel" class="hud-subline">Charge</p>
@@ -285,7 +335,6 @@ app.innerHTML = `
                     </div>
                 </section>
                 <section class="pixel-panel hud-card conditions-card compact-conditions-card">
-                    <p class="eyebrow">Conditions</p>
                     <h3 id="hudWind">Wind</h3>
                     <p id="hudCampaign" class="hud-subline">Round status</p>
                 </section>
@@ -295,10 +344,6 @@ app.innerHTML = `
                 <div class="arena-main">
                     <div class="canvas-frame pixel-panel">
                         <canvas id="gameCanvas" width="${LOGICAL_WIDTH}" height="${LOGICAL_HEIGHT}"></canvas>
-                    </div>
-
-                    <div class="pixel-panel footer-panel">
-                        <p id="hudHint">Arrow left and right aim, arrow up and down change power, and space fires.</p>
                     </div>
                 </div>
 
@@ -315,7 +360,6 @@ app.innerHTML = `
                     </div>
                 </section>
             </div>
-
             <section id="intermissionScreen" class="pixel-panel intermission-screen hidden"></section>
         </section>
     </div>
@@ -329,9 +373,15 @@ const playerNameInput = mustElement<HTMLInputElement>('playerName');
 const playerLoadoutSelect = mustElement<HTMLSelectElement>('playerLoadout');
 const playerColorPicker = mustElement<HTMLElement>('playerColorPicker');
 const loadoutDescription = mustElement<HTMLElement>('loadoutDescription');
+const battleSetupPanel = mustElement<HTMLElement>('battleSetupPanel');
+const battleSetupTitle = mustElement<HTMLElement>('battleSetupTitle');
+const battleSetupLead = mustElement<HTMLElement>('battleSetupLead');
+const btnBattleSetupBack = mustElement<HTMLButtonElement>('btnBattleSetupBack');
+const btnBattleSetupConfirm = mustElement<HTMLButtonElement>('btnBattleSetupConfirm');
 const powerRuleSelect = mustElement<HTMLSelectElement>('powerRule');
 const windModeSelect = mustElement<HTMLSelectElement>('windMode');
 const windMaxSelect = mustElement<HTMLSelectElement>('windMax');
+const terrainThemeInputs = Array.from(document.querySelectorAll<HTMLInputElement>('input[name="terrainThemePool"]'));
 const roundCountInput = mustElement<HTMLInputElement>('roundCount');
 const roundOrderSelect = mustElement<HTMLSelectElement>('roundOrder');
 const weaponCostMultiplierInput = mustElement<HTMLInputElement>('weaponCostMultiplier');
@@ -363,6 +413,7 @@ const btnMuteMenu = mustElement<HTMLButtonElement>('btnMuteMenu');
 const btnMusicMenu = mustElement<HTMLButtonElement>('btnMusicMenu');
 const btnMuteGame = mustElement<HTMLButtonElement>('btnMuteGame');
 const btnMusicGame = mustElement<HTMLButtonElement>('btnMusicGame');
+const btnHelpGame = mustElement<HTMLButtonElement>('btnHelpGame');
 const hudPilot = mustElement<HTMLElement>('hudPilot');
 const hudHealthFill = mustElement<HTMLElement>('hudHealthFill');
 const hudWeapon = mustElement<HTMLElement>('hudWeapon');
@@ -371,7 +422,6 @@ const hudAngle = mustElement<HTMLElement>('hudAngle');
 const hudPowerLabel = mustElement<HTMLElement>('hudPowerLabel');
 const hudWind = mustElement<HTMLElement>('hudWind');
 const hudCampaign = mustElement<HTMLElement>('hudCampaign');
-const hudHint = mustElement<HTMLElement>('hudHint');
 const weaponSelect = mustElement<HTMLSelectElement>('weaponSelect');
 const scoreboard = mustElement<HTMLElement>('scoreboard');
 const boardTabBattle = mustElement<HTMLButtonElement>('boardTabBattle');
@@ -384,7 +434,7 @@ let localLobbyPlayers: LobbyPlayer[] = [];
 let network: Network | null = null;
 let game: Game | null = null;
 let campaignPlayers: CampaignPlayer[] = [];
-let currentSettings: MatchSettings = { ...DEFAULT_SETTINGS, scoring: { ...DEFAULT_SETTINGS.scoring } };
+let currentSettings: MatchSettings = { ...DEFAULT_SETTINGS, terrainThemes: [...DEFAULT_SETTINGS.terrainThemes], scoring: { ...DEFAULT_SETTINGS.scoring } };
 let currentRound = 1;
 let intermissionStage: IntermissionStage = 'hidden';
 let latestRoundSummary: RoundSummary | null = null;
@@ -393,11 +443,14 @@ let startTimer: number | null = null;
 let shopStartTimer: number | null = null;
 let activeBoardTab: 'battle' | 'campaign' = 'battle';
 let latestHudSnapshot: HudSnapshot | null = null;
+let currentHintLabel = 'Arrow left and right aim, arrow up and down change power, hold Ctrl for fine adjustment, and space fires.';
 let localShopCursor = 0;
 let shopSelection: ShopSelection | null = null;
+let pendingSetupMode: SetupLaunchMode | null = null;
 playerNameInput.value = 'Pilot One';
 roomCodeInput.value = '';
 powerRuleSelect.value = DEFAULT_SETTINGS.powerRule;
+terrainThemeInputs.forEach((input) => { input.checked = DEFAULT_SETTINGS.terrainThemes.includes(input.value as TerrainTheme); });
 windModeSelect.value = DEFAULT_SETTINGS.windMode;
 windMaxSelect.value = `${DEFAULT_SETTINGS.maxWind}`;
 roundCountInput.value = `${DEFAULT_SETTINGS.rounds}`;
@@ -464,38 +517,25 @@ btnMuteMenu.addEventListener('click', async () => { await audio.unlock(); audio.
 btnMuteGame.addEventListener('click', async () => { await audio.unlock(); audio.setMuted(!audio.muted); updateAudioControls(); });
 btnMusicMenu.addEventListener('click', async () => { await audio.unlock(); audio.setMusicMuted(!audio.musicOnlyMuted); updateAudioControls(); });
 btnMusicGame.addEventListener('click', async () => { await audio.unlock(); audio.setMusicMuted(!audio.musicOnlyMuted); updateAudioControls(); });
+btnHelpGame.addEventListener('click', () => { window.alert(currentHintLabel); });
 [scoringDamageToggle, scoringKillsToggle, scoringPlacementToggle].forEach((input) => {
     input.addEventListener('change', () => {
         syncMatchSettingsAvailability();
     });
 });
+terrainThemeInputs.forEach((input) => {
+    input.addEventListener('change', () => {
+        if (!terrainThemeInputs.some((entry) => entry.checked)) input.checked = true;
+    });
+});
 
 btnHost.addEventListener('click', async () => {
     await audio.unlock();
-    btnHost.disabled = true;
-    btnJoin.disabled = true;
-    try {
-        network?.destroy();
-        network = new Network();
-        bindNetwork(network);
-        const roomCode = await network.hostGame(readProfileForm());
-        lobbyMode = 'online-host';
-        syncMatchSettingsAvailability();
-        lobbyStatus.textContent = `Room ${roomCode} is live. Share the code and wait for everyone to ready up.`;
-        lobbyPanel.classList.remove('hidden');
-        renderLobby();
-        updateReadyButton();
-    } catch (error) {
-        const message = error instanceof Error ? error.message : 'Unable to create the room.';
-        window.alert('Unable to create the room. ' + message);
-    } finally {
-        btnHost.disabled = false;
-        btnJoin.disabled = false;
-    }
+    openBattleSetup('online-host');
 });
-
 btnJoin.addEventListener('click', async () => {
     await audio.unlock();
+    closeBattleSetup();
     const roomCode = roomCodeInput.value.trim().toUpperCase();
     if (!roomCode) {
         window.alert('Enter a room code first.');
@@ -525,17 +565,13 @@ btnJoin.addEventListener('click', async () => {
 
 btnLocal.addEventListener('click', async () => {
     await audio.unlock();
-    network?.destroy();
-    network = null;
-    lobbyMode = 'local';
-    syncMatchSettingsAvailability();
-    localLobbyPlayers = createLocalLobbyPlayers(Number(localPlayerCount.value));
-    lobbyPanel.classList.remove('hidden');
-    lobbyStatus.textContent = 'Edit each local pilot, lock them in, and the match will start automatically.';
-    updateReadyButton();
-    renderLobby();
+    openBattleSetup('local');
 });
-
+btnBattleSetupBack.addEventListener('click', closeBattleSetup);
+btnBattleSetupConfirm.addEventListener('click', async () => {
+    await audio.unlock();
+    await confirmBattleSetup();
+});
 btnReady.addEventListener('click', async () => {
     await audio.unlock();
     if (!network || lobbyMode === 'idle' || lobbyMode === 'local') return;
@@ -583,6 +619,7 @@ function readMatchSettingsForm(): MatchSettings {
     return {
         windMode: windModeSelect.value as WindMode,
         maxWind: Number(windMaxSelect.value),
+        terrainThemes: terrainThemeInputs.filter((input) => input.checked).map((input) => input.value as TerrainTheme).length ? terrainThemeInputs.filter((input) => input.checked).map((input) => input.value as TerrainTheme) : [...DEFAULT_SETTINGS.terrainThemes],
         terrainCollapse: terrainCollapseInput.checked,
         powerRule: powerRuleSelect.value as PowerRule,
         rounds: clampSetting(Number(roundCountInput.value), 1, 99, DEFAULT_SETTINGS.rounds),
@@ -603,6 +640,85 @@ function readScoringSettingsForm(): ScoringSettings {
         secondPlacePoints: clampSetting(Number(scoringSecondValue.value), 0, 10000, DEFAULT_SCORING.secondPlacePoints),
         thirdPlacePoints: clampSetting(Number(scoringThirdValue.value), 0, 10000, DEFAULT_SCORING.thirdPlacePoints)
     };
+}
+
+function cloneMatchSettings(settings: MatchSettings): MatchSettings {
+    return {
+        ...settings,
+        terrainThemes: [...settings.terrainThemes],
+        scoring: { ...settings.scoring }
+    };
+}
+
+function openBattleSetup(mode: SetupLaunchMode) {
+    pendingSetupMode = mode;
+    battleSetupPanel.classList.remove('hidden');
+    battleSetupTitle.textContent = mode === 'online-host' ? 'Host Match Rules' : 'Local Match Rules';
+    battleSetupLead.textContent = mode === 'online-host'
+        ? 'Tune the room rules, terrain pool, and scoring, then create the room.'
+        : 'Tune the local rules, terrain pool, and scoring, then create the skirmish lobby.';
+    btnBattleSetupConfirm.textContent = mode === 'online-host' ? 'Create Room' : 'Create Local Lobby';
+    btnHost.classList.toggle('active', mode === 'online-host');
+    btnLocal.classList.toggle('active', mode === 'local');
+    battleSetupPanel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+function closeBattleSetup() {
+    pendingSetupMode = null;
+    battleSetupPanel.classList.add('hidden');
+    btnHost.classList.remove('active');
+    btnLocal.classList.remove('active');
+}
+
+async function confirmBattleSetup() {
+    if (pendingSetupMode === 'online-host') {
+        await createHostedLobby();
+        return;
+    }
+    if (pendingSetupMode === 'local') {
+        await createLocalLobby();
+    }
+}
+
+async function createHostedLobby() {
+    btnHost.disabled = true;
+    btnJoin.disabled = true;
+    btnBattleSetupConfirm.disabled = true;
+    try {
+        network?.destroy();
+        network = new Network();
+        bindNetwork(network);
+        const roomCode = await network.hostGame(readProfileForm());
+        lobbyMode = 'online-host';
+        currentSettings = cloneMatchSettings(readMatchSettingsForm());
+        syncMatchSettingsAvailability();
+        lobbyStatus.textContent = `Room ${roomCode} is live. Share the code and wait for everyone to ready up.`;
+        lobbyPanel.classList.remove('hidden');
+        renderLobby();
+        updateReadyButton();
+        closeBattleSetup();
+    } catch (error) {
+        const message = error instanceof Error ? error.message : 'Unable to create the room.';
+        window.alert('Unable to create the room. ' + message);
+    } finally {
+        btnHost.disabled = false;
+        btnJoin.disabled = false;
+        btnBattleSetupConfirm.disabled = false;
+    }
+}
+
+async function createLocalLobby() {
+    network?.destroy();
+    network = null;
+    lobbyMode = 'local';
+    currentSettings = cloneMatchSettings(readMatchSettingsForm());
+    syncMatchSettingsAvailability();
+    localLobbyPlayers = createLocalLobbyPlayers(Number(localPlayerCount.value));
+    lobbyPanel.classList.remove('hidden');
+    lobbyStatus.textContent = 'Edit each local pilot, lock them in, and the match will start automatically.';
+    updateReadyButton();
+    renderLobby();
+    closeBattleSetup();
 }
 
 function updateAudioControls() {
@@ -644,7 +760,7 @@ function bindNetwork(activeNetwork: Network) {
     };
 
     activeNetwork.onGameStart = (payload) => {
-        currentSettings = payload.settings;
+        currentSettings = { ...payload.settings, terrainThemes: [...payload.settings.terrainThemes], scoring: { ...payload.settings.scoring } };
         currentRound = payload.roundNumber;
         campaignPlayers = payload.players.map((player) => ({
             id: player.id,
@@ -796,7 +912,7 @@ function cancelScheduledStart() {
 
 function startCampaign(players: CampaignPlayer[], activeNetwork: Network | null) {
     campaignPlayers = players.map((player) => ({ ...player, weapons: player.weapons.map((weapon) => ({ ...weapon })), shopReady: false, credits: 0 }));
-    currentSettings = readMatchSettingsForm();
+    currentSettings = cloneMatchSettings(readMatchSettingsForm());
     currentRound = 1;
     campaignComplete = false;
     latestRoundSummary = null;
@@ -1404,7 +1520,7 @@ function renderShopScreen() {
                             <p class="eyebrow">SHOP</p>
                             <h2>Carry-Over Arsenal</h2>
                         </div>
-                        ${focusPlayer ? `<div class="shop-head-meta"><span class="shop-focus-name" style="color:${focusPlayer.color}">${escapeHtml(focusPlayer.name)}</span><span class="shop-credits">${focusPlayer.credits} cr</span></div>` : ''}
+                        ${focusPlayer ? `<div class="shop-head-meta" style="--accent:${focusPlayer.color}"><span class="shop-focus-name">${escapeHtml(focusPlayer.name)}</span><span class="shop-credit-stack"><small>Available Credits</small><span class="shop-credits">${focusPlayer.credits} cr</span></span></div>` : ''}
                     </div>
                     ${focusPlayer ? `
                         <div class="shop-columns tidy-shop-columns">
@@ -1416,8 +1532,8 @@ function renderShopScreen() {
                                 <div class="weapon-list tidy-weapon-list">
                                     ${focusPlayer.weapons.filter((weapon) => weapon.ammo !== 0 || weapon.type === 'cannon').map((weapon) => `
                                         <button class="weapon-chip tidy-weapon-chip ${selection?.source === 'stock' && selection.weaponType === weapon.type ? 'selected' : ''}" data-action="select-weapon" data-player-id="${focusPlayer.id}" data-source="stock" data-weapon="${weapon.type}" ${focusPlayer.shopReady ? 'disabled' : ''}>
-                                            <span class="weapon-name">${WEAPON_DEFINITIONS[weapon.type].name}</span>
-                                            <strong>${weapon.ammo < 0 ? 'INF' : weapon.ammo}</strong>
+                                            <span class="shop-row-main"><span class="weapon-name">${WEAPON_DEFINITIONS[weapon.type].name}</span><small>Owned</small></span>
+                                            <strong class="shop-row-value">${weapon.ammo < 0 ? 'INF' : weapon.ammo}</strong>
                                         </button>
                                     `).join('')}
                                 </div>
@@ -1433,8 +1549,8 @@ function renderShopScreen() {
                                         const locked = price === null;
                                         return `
                                             <button class="store-item tidy-store-item ${selection?.source === 'market' && selection.weaponType === type ? 'selected' : ''} ${locked ? 'disabled' : ''}" data-action="select-weapon" data-player-id="${focusPlayer.id}" data-source="market" data-weapon="${type}" ${focusPlayer.shopReady || locked ? 'disabled' : ''}>
-                                                <span class="weapon-name">${WEAPON_DEFINITIONS[type].name}</span>
-                                                <strong>${price === null ? 'LOCK' : `${price} cr`}</strong>
+                                                <span class="shop-row-main"><span class="weapon-name">${WEAPON_DEFINITIONS[type].name}</span><small>${locked ? 'Unavailable' : 'Acquire'}</small></span>
+                                                <strong class="shop-row-value">${price === null ? 'LOCK' : `${price} cr`}</strong>
                                             </button>
                                         `;
                                     }).join('')}
@@ -1442,7 +1558,7 @@ function renderShopScreen() {
                             </section>
                             <aside class="shop-detail-panel">
                                 ${selectedWeapon ? `
-                                    <div class="weapon-preview-art" style="--accent:${selectedWeapon.projectileColor}">
+                                    <div class="weapon-preview-art" data-weapon-type="${selectedWeapon.type}" style="--accent:${selectedWeapon.projectileColor}">
                                         <div class="weapon-preview-core"></div>
                                         <span>${selectedWeapon.name}</span>
                                     </div>
@@ -1573,6 +1689,7 @@ function leaveLobby() {
     lobbyPlayers = [];
     localLobbyPlayers = [];
     lobbyMode = 'idle';
+    closeBattleSetup();
     syncMatchSettingsAvailability();
     lobbyStatus.textContent = 'Host, join, or create a local lobby to begin.';
     renderLobby();
@@ -1594,6 +1711,7 @@ function leaveMatch() {
     shopSelection = null;
     intermissionStage = 'hidden';
     renderIntermission();
+    closeBattleSetup();
     syncMatchSettingsAvailability();
     renderLobby();
     updateReadyButton();
@@ -1618,6 +1736,7 @@ function syncMatchSettingsAvailability() {
     powerRuleSelect.disabled = disableSettings;
     windModeSelect.disabled = disableSettings;
     windMaxSelect.disabled = disableSettings;
+    terrainThemeInputs.forEach((input) => { input.disabled = disableSettings; });
     roundCountInput.disabled = disableSettings;
     weaponCostMultiplierInput.disabled = disableSettings;
     scoringDamageToggle.disabled = disableSettings;
@@ -1647,7 +1766,7 @@ function updateGameHud(snapshot: HudSnapshot) {
     hudAngle.textContent = snapshot.angleLabel;
     hudWind.textContent = snapshot.windLabel;
     hudCampaign.textContent = snapshot.roundLabel;
-    hudHint.textContent = snapshot.hintLabel;
+    currentHintLabel = snapshot.hintLabel;
 
     const weaponOptionsMarkup = snapshot.weaponOptions.map((option) => `<option value="${option.index}" ${option.disabled ? 'disabled' : ''}>${option.label}</option>`).join('');
     if (weaponSelect.innerHTML !== weaponOptionsMarkup) {
@@ -1700,7 +1819,7 @@ function resetHud() {
     hudAngle.textContent = 'Angle';
     hudWind.textContent = 'Wind';
     hudCampaign.textContent = 'Round status';
-    hudHint.textContent = 'Arrow left and right aim, arrow up and down change power, and space fires.';
+    currentHintLabel = 'Arrow left and right aim, arrow up and down change power, hold Ctrl for fine adjustment, and space fires.';
     weaponSelect.innerHTML = '<option>Weapon</option>';
     weaponSelect.disabled = true;
     activeBoardTab = 'battle';
@@ -1762,6 +1881,12 @@ function escapeHtml(value: string) {
 function escapeAttribute(value: string) {
     return escapeHtml(value);
 }
+
+
+
+
+
+
 
 
 

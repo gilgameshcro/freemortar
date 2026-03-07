@@ -210,5 +210,6 @@ export function lerp(a: number, b: number, t: number): number {
 }
 
 export function normalizeAngle(angle: number): number {
-    return clamp(angle, -Math.PI + 0.12, -0.12);
+    return clamp(angle, -Math.PI + 0.12, 1.18);
 }
+
