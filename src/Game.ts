@@ -6,6 +6,7 @@ import {
     getWeaponShopPrice,
     isCombatWeapon,
     lerp,
+    normalizeAngle,
     LOGICAL_HEIGHT,
     LOGICAL_WIDTH,
     WEAPON_DEFINITIONS
@@ -178,6 +179,8 @@ export class Game {
     private screenShake = 0;
     private roundEndEmitted = false;
     private turnInteractionStarted = false;
+    private botAimTimer: number | null = null;
+    private botFireTimer: number | null = null;
 
     private readonly handleKeyDown = (event: KeyboardEvent) => {
         if (!this.canLocalControlCurrentTank()) return;
@@ -285,11 +288,13 @@ export class Game {
         }
 
         this.emitHud();
+        this.queueBotTurnIfNeeded();
         requestAnimationFrame((timestamp) => this.frame(timestamp));
     }
 
     public stop() {
         this.running = false;
+        this.clearBotTimers();
         window.removeEventListener('keydown', this.handleKeyDown);
     }
 
@@ -628,7 +633,12 @@ export class Game {
         this.state.winnerId = winnerId;
         this.state.phase = winnerId ? 'game_over' : 'aiming';
         this.turnInteractionStarted = false;
-        if (winnerId) this.emitRoundEndOnce();
+        if (winnerId) {
+            this.clearBotTimers();
+            this.emitRoundEndOnce();
+        } else {
+            this.queueBotTurnIfNeeded();
+        }
     }
     private advanceTurn() {
         const livingPlayers = this.players.filter((player) => player.alive);
@@ -648,6 +658,7 @@ export class Game {
         this.state.phase = 'aiming';
         this.turnInteractionStarted = false;
         this.emitTurnState();
+        this.queueBotTurnIfNeeded();
     }
 
     private finishRound(winnerId: string | null) {
@@ -1135,11 +1146,13 @@ export class Game {
         const windText = `Wind ${windLevel}/10 ${windDirection}`;
         const hintLabel = this.state.phase === 'game_over'
             ? `${winner?.name ?? 'No one'} won the round. Open the debrief and shop to continue.`
-            : this.canLocalControlCurrentTank()
-                ? 'Arrow left/right aims, arrow up/down charges power, hold Ctrl for fine adjustment, Q/E swaps weapons, space fires.'
-                : this.awaitingShotResult || this.projectiles.length > 0
-                    ? 'Shot is resolving. Waiting for impact, debris, and terrain collapse.'
-                    : `Waiting for ${currentPlayer.name} to act.`;
+            : currentPlayer.isBot && this.isAuthoritative
+                ? `${currentPlayer.name} is calculating a firing solution.`
+                : this.canLocalControlCurrentTank()
+                    ? 'Arrow left/right aims, arrow up/down charges power, hold Ctrl for fine adjustment, Q/E swaps weapons, space fires.'
+                    : this.awaitingShotResult || this.projectiles.length > 0
+                        ? 'Shot is resolving. Waiting for impact, debris, and terrain collapse.'
+                        : `Waiting for ${currentPlayer.name} to act.`;
 
         this.onHudUpdate({
             turnLabel: `Turn ${this.state.turnNumber}`,
@@ -1172,11 +1185,217 @@ export class Game {
     private canLocalControlCurrentTank() {
         if (this.state.phase !== 'aiming') return false;
         const currentPlayer = this.currentPlayer;
-        if (!currentPlayer || !currentPlayer.alive) return false;
+        if (!currentPlayer || !currentPlayer.alive || currentPlayer.isBot) return false;
         if (!this.network) return true;
         return currentPlayer.id === this.localPlayerId;
     }
 
+    private clearBotTimers() {
+        if (this.botAimTimer !== null) {
+            window.clearTimeout(this.botAimTimer);
+            this.botAimTimer = null;
+        }
+        if (this.botFireTimer !== null) {
+            window.clearTimeout(this.botFireTimer);
+            this.botFireTimer = null;
+        }
+    }
+
+    private queueBotTurnIfNeeded() {
+        this.clearBotTimers();
+        if (!this.isAuthoritative || this.state.phase !== 'aiming') return;
+        const tank = this.currentPlayer;
+        if (!tank || !tank.alive || !tank.isBot) return;
+
+        const turnNumber = this.state.turnNumber;
+        const playerId = tank.id;
+        const thinkMs = Math.round(this.scaleBotValue(tank.botDifficulty, 1050, 180));
+        this.botAimTimer = window.setTimeout(() => {
+            this.botAimTimer = null;
+            this.executeBotAim(playerId, turnNumber);
+        }, thinkMs);
+    }
+
+    private executeBotAim(playerId: string, turnNumber: number) {
+        if (!this.isAuthoritative || this.state.phase !== 'aiming' || turnNumber !== this.state.turnNumber) return;
+        const tank = this.currentPlayer;
+        if (!tank || tank.id !== playerId || !tank.isBot || !tank.alive) return;
+
+        const plan = this.planBotShot(tank);
+        tank.selectedWeaponIndex = plan.weaponIndex;
+        tank.setAim(plan.angle, plan.power, this.settings.powerRule);
+        tank.ensureWeaponAvailable();
+        this.turnInteractionStarted = true;
+        this.emitHud();
+        this.broadcastBotAimState(tank);
+
+        const fireDelay = Math.round(this.scaleBotValue(tank.botDifficulty, 620, 180));
+        this.botFireTimer = window.setTimeout(() => {
+            this.botFireTimer = null;
+            if (this.state.phase !== 'aiming' || this.state.turnNumber !== turnNumber) return;
+            const active = this.currentPlayer;
+            if (!active || active.id !== playerId || !active.isBot || !active.alive) return;
+            this.launchProjectile(active);
+        }, fireDelay);
+    }
+
+    private broadcastBotAimState(tank: Tank) {
+        if (this.network?.role !== 'host') return;
+        this.network.sendGameMessage({
+            kind: 'AIM_STATE',
+            playerId: tank.id,
+            angle: tank.angle,
+            power: tank.power,
+            weaponIndex: tank.selectedWeaponIndex,
+            turnNumber: this.state.turnNumber
+        });
+    }
+
+    private planBotShot(tank: Tank) {
+        const availableWeapons = tank.weapons
+            .map((weapon, index) => ({ weapon, index }))
+            .filter(({ weapon }) => weapon.ammo !== 0 && isCombatWeapon(weapon.type) && (WEAPON_DEFINITIONS[weapon.type].damage > 0 || WEAPON_DEFINITIONS[weapon.type].blastRadius > 0));
+        const weaponPool = availableWeapons.length ? availableWeapons : [{ weapon: tank.currentWeapon, index: tank.selectedWeaponIndex }];
+        const rankedTargets = this.players
+            .filter((player) => player.alive && player.id !== tank.id)
+            .sort((left, right) => (left.health + left.shield) - (right.health + right.shield) || Math.abs(left.x - tank.x) - Math.abs(right.x - tank.x));
+        const maxTargets = Math.max(1, Math.min(rankedTargets.length, Math.floor(tank.botDifficulty / 3) + 1));
+        const targets = rankedTargets.slice(0, maxTargets);
+        const weaponLimit = Math.max(1, Math.min(weaponPool.length, Math.floor(tank.botDifficulty / 2) + 2));
+        const candidateWeapons = [...weaponPool].sort((left, right) => {
+            const a = WEAPON_DEFINITIONS[left.weapon.type];
+            const b = WEAPON_DEFINITIONS[right.weapon.type];
+            return (b.damage + b.blastRadius * 1.35) - (a.damage + a.blastRadius * 1.35);
+        }).slice(0, weaponLimit);
+
+        let best = {
+            weaponIndex: candidateWeapons[0]?.index ?? tank.selectedWeaponIndex,
+            angle: tank.angle,
+            power: tank.power,
+            score: Number.NEGATIVE_INFINITY
+        };
+        let safest = {
+            weaponIndex: candidateWeapons[0]?.index ?? tank.selectedWeaponIndex,
+            angle: tank.angle,
+            power: tank.power,
+            score: Number.NEGATIVE_INFINITY
+        };
+
+        const angleSamples = Math.max(6, 5 + tank.botDifficulty);
+        const powerSamples = Math.max(5, 4 + tank.botDifficulty);
+        const angleRange = this.scaleBotValue(tank.botDifficulty, 1.28, 0.42);
+        const start = tank.barrelTip;
+        const maxPower = tank.getMaxPower(this.settings.powerRule);
+
+        candidateWeapons.forEach(({ weapon, index }) => {
+            targets.forEach((target) => {
+                const targetY = target.y - target.bodyHeight / 2;
+                const directAngle = Math.atan2(targetY - start.y, target.x - start.x);
+                for (let angleIndex = 0; angleIndex < angleSamples; angleIndex += 1) {
+                    const angleOffset = angleSamples === 1 ? 0 : lerp(-angleRange, angleRange, angleIndex / Math.max(1, angleSamples - 1));
+                    const candidateAngle = normalizeAngle(directAngle + angleOffset);
+                    for (let powerIndex = 0; powerIndex < powerSamples; powerIndex += 1) {
+                        const candidatePower = lerp(18, maxPower, powerSamples === 1 ? 1 : powerIndex / Math.max(1, powerSamples - 1));
+                        const impact = this.simulateBotImpact(tank, weapon.type, candidateAngle, candidatePower);
+                        if (!impact) continue;
+                        if (!this.isBotImpactSafe(tank, weapon.type, impact.x, impact.y)) continue;
+                        const score = this.scoreBotImpact(tank, weapon.type, impact.x, impact.y, target.id);
+                        const safety = this.scoreBotSafety(tank, impact.x, impact.y);
+                        if (score > best.score) {
+                            best = { weaponIndex: index, angle: candidateAngle, power: candidatePower, score };
+                        }
+                        if (safety > safest.score) {
+                            safest = { weaponIndex: index, angle: candidateAngle, power: candidatePower, score: safety };
+                        }
+                    }
+                }
+            });
+        });
+
+        const baseChoice = best.score > 6 ? best : safest.score > Number.NEGATIVE_INFINITY ? safest : {
+            weaponIndex: tank.selectedWeaponIndex,
+            angle: tank.angle,
+            power: Math.min(maxPower, Math.max(36, tank.power)),
+            score: 0
+        };
+        const chosen = { ...baseChoice };
+        const angleError = this.scaleBotValue(tank.botDifficulty, 0.42, 0.025);
+        const powerError = this.scaleBotValue(tank.botDifficulty, 30, 2);
+        const attemptedAngle = normalizeAngle(chosen.angle + (this.nextRandom() * 2 - 1) * angleError);
+        const attemptedPower = clamp(chosen.power + (this.nextRandom() * 2 - 1) * powerError, 6, maxPower);
+        const attemptedImpact = this.simulateBotImpact(tank, tank.weapons[chosen.weaponIndex]?.type ?? tank.currentWeapon.type, attemptedAngle, attemptedPower);
+        if (attemptedImpact && this.isBotImpactSafe(tank, tank.weapons[chosen.weaponIndex]?.type ?? tank.currentWeapon.type, attemptedImpact.x, attemptedImpact.y)) {
+            chosen.angle = attemptedAngle;
+            chosen.power = attemptedPower;
+        }
+        return chosen;
+    }
+
+    private simulateBotImpact(owner: Tank, weaponType: WeaponType, angle: number, power: number) {
+        const start = owner.barrelTip;
+        const projectile = new Projectile(start.x, start.y, angle, power, owner.id, weaponType);
+        const activePlayers = this.players.filter((player) => player.alive);
+        for (let tick = 0; tick < 480; tick += 1) {
+            const impact = projectile.step(this.terrain, activePlayers, this.state.gravity, this.state.wind);
+            if (impact) return impact;
+            if ((weaponType === 'merv' || weaponType === 'chaos_mirv' || weaponType === 'large_merv' || weaponType === 'large_chaos_mirv') && projectile.shouldSplit(this.terrain)) {
+                return { x: Math.round(projectile.x), y: Math.round(projectile.y + 10) };
+            }
+        }
+        return null;
+    }
+
+    private scoreBotImpact(owner: Tank, weaponType: WeaponType, impactX: number, impactY: number, focusTargetId: string) {
+        const definition = WEAPON_DEFINITIONS[weaponType];
+        const effectiveRadius = definition.blastRadius
+            + (weaponType === 'merv' || weaponType === 'chaos_mirv' || weaponType === 'large_merv' || weaponType === 'large_chaos_mirv' ? 8 : 0)
+            + (weaponType === 'chaos' || weaponType === 'large_chaos' ? 6 : 0)
+            + (weaponType === 'driller' || weaponType === 'large_driller' ? 10 : 0)
+            + (weaponType === 'autocannon' || weaponType === 'large_autocannon' ? 4 : 0);
+        const selfDistance = Math.hypot(owner.x - impactX, (owner.y - owner.bodyHeight / 2) - impactY);
+        let total = selfDistance < effectiveRadius + 18 ? -220 : 0;
+        for (const tank of this.players) {
+            if (!tank.alive) continue;
+            const targetY = tank.y - tank.bodyHeight / 2;
+            const distance = Math.hypot(tank.x - impactX, targetY - impactY);
+            const estimatedDamage = Math.max(0, definition.damage * (1 - distance / Math.max(1, effectiveRadius + 14)));
+            if (tank.id === owner.id) {
+                total -= estimatedDamage * 7.5;
+                if (distance < effectiveRadius + 10) total -= 140;
+                continue;
+            }
+            if (estimatedDamage <= 0) continue;
+            const focusBonus = tank.id === focusTargetId ? 1.7 : 1.1;
+            total += estimatedDamage * focusBonus;
+            if (tank.health + tank.shield <= estimatedDamage) total += 42;
+            if (tank.shield > 0) total += 4;
+        }
+        return total + effectiveRadius * 0.15;
+    }
+
+    private isBotImpactSafe(owner: Tank, weaponType: WeaponType, impactX: number, impactY: number) {
+        const definition = WEAPON_DEFINITIONS[weaponType];
+        const effectiveRadius = definition.blastRadius
+            + (weaponType === 'merv' || weaponType === 'chaos_mirv' || weaponType === 'large_merv' || weaponType === 'large_chaos_mirv' ? 8 : 0)
+            + (weaponType === 'chaos' || weaponType === 'large_chaos' ? 6 : 0)
+            + (weaponType === 'driller' || weaponType === 'large_driller' ? 10 : 0)
+            + (weaponType === 'autocannon' || weaponType === 'large_autocannon' ? 4 : 0);
+        const selfDistance = Math.hypot(owner.x - impactX, (owner.y - owner.bodyHeight / 2) - impactY);
+        return selfDistance > effectiveRadius + 18;
+    }
+
+    private scoreBotSafety(owner: Tank, impactX: number, impactY: number) {
+        const selfDistance = Math.hypot(owner.x - impactX, (owner.y - owner.bodyHeight / 2) - impactY);
+        const nearestEnemyDistance = this.players
+            .filter((tank) => tank.alive && tank.id !== owner.id)
+            .reduce((best, tank) => Math.min(best, Math.hypot(tank.x - impactX, (tank.y - tank.bodyHeight / 2) - impactY)), Number.POSITIVE_INFINITY);
+        return selfDistance * 2.1 - nearestEnemyDistance * 0.65;
+    }
+
+    private scaleBotValue(difficulty: number, low: number, high: number) {
+        const t = clamp((difficulty - 1) / 9, 0, 1);
+        return lerp(low, high, t);
+    }
     private broadcastAimState() {
         if (!this.network) return;
         const currentPlayer = this.currentPlayer;
@@ -1575,6 +1794,9 @@ export class Game {
         return `rgba(${(bigint >> 16) & 255}, ${(bigint >> 8) & 255}, ${bigint & 255}, ${alpha})`;
     }
 }
+
+
+
 
 
 

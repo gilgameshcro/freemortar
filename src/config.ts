@@ -1,4 +1,4 @@
-import type { LoadoutId, PowerRule, WeaponState, WeaponType } from './types';
+import type { BotDifficulty, LoadoutId, PowerRule, WeaponState, WeaponType } from './types';
 
 export const LOGICAL_WIDTH = 400;
 export const LOGICAL_HEIGHT = 225;
@@ -11,6 +11,25 @@ export const STARTING_POWER = 96;
 export const ROUND_SHOP_BASE_CREDITS = 100;
 export const WEAPON_SELLBACK_RATIO = 0.6;
 export const MAX_SHIELD = 100;
+
+export interface BotDifficultyPreset {
+    level: BotDifficulty;
+    title: string;
+    description: string;
+}
+
+export const BOT_DIFFICULTY_PRESETS: Record<BotDifficulty, BotDifficultyPreset> = {
+    1: { level: 1, title: 'Pebble Brain', description: 'Barely tracks arcs. Mostly guesses, forgets wind, and lobs panic shots.' },
+    2: { level: 2, title: 'Mud Scholar', description: 'Understands that hills exist, but still overreacts and wastes power.' },
+    3: { level: 3, title: 'Crater Intern', description: 'Finds rough splash lines and sometimes buys something sensible.' },
+    4: { level: 4, title: 'Slope Goblin', description: 'Reads terrain a bit, mixes in safer shots, and avoids total nonsense.' },
+    5: { level: 5, title: 'Wind Sniffer', description: 'Starts correcting for wind and looking for practical blast zones.' },
+    6: { level: 6, title: 'Ridge Reader', description: 'Builds decent firing solutions, shops with intent, and punishes exposed tanks.' },
+    7: { level: 7, title: 'Siege Clerk', description: 'Searches systematically, uses stronger weapons well, and rarely wastes a turn.' },
+    8: { level: 8, title: 'Horizon Reaper', description: 'Strong tactical bot that spots kill windows and terrain advantages quickly.' },
+    9: { level: 9, title: 'Orbit Butcher', description: 'Very high accuracy. Usually finds the right shell, angle, and power combination.' },
+    10: { level: 10, title: 'Cataclysm Auditor', description: 'Nearly optimal. Reads the board deeply and plays close to a 90% perfect game.' }
+};
 
 export const COLOR_OPTIONS = [
     '#ff7a59',

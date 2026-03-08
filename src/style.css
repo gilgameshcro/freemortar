@@ -775,7 +775,7 @@ canvas {
 }
 
 .health-meter {
-    margin: 8px 0;
+    margin: 5px 0 0;
 }
 
 .health-bar {
@@ -1612,7 +1612,7 @@ canvas {
 }
 
 .compact-hud-row .hud-card {
-    padding: 12px 14px;
+    padding: 11px 13px 8px;
     min-height: 0;
 }
 
@@ -1623,9 +1623,19 @@ canvas {
     margin: 0;
 }
 
+.pilot-card-live {
+    display: grid;
+    align-content: start;
+    gap: 4px;
+}
+
 .pilot-card-live h3 {
+    display: flex;
+    align-items: flex-end;
+    min-height: 2.35em;
     font-size: 1.45rem;
     line-height: 1.05;
+    overflow-wrap: anywhere;
 }
 
 .compact-arsenal-card {
@@ -2720,7 +2730,7 @@ canvas {
     }
 }
 .shield-meter {
-    margin-bottom: 6px;
+    margin-bottom: 2px;
 }
 
 .shield-bar span {
@@ -3587,3 +3597,23 @@ canvas {
         grid-template-columns: 1fr;
     }
 }
+
+.bot-mode-toggle {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+}
+
+.bot-mode-toggle .pixel-button.active {
+    border-color: rgba(255, 244, 215, 0.42);
+    box-shadow: 0 0 0 1px rgba(255, 244, 215, 0.14);
+}
+
+.bot-difficulty-copy {
+    min-height: 0;
+    margin-top: 8px;
+    font-size: 0.82rem;
+    line-height: 1.4;
+}
+
+

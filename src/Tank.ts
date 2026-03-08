@@ -9,7 +9,7 @@ import {
     normalizeAngle,
     STARTING_POWER
 } from './config';
-import type { LoadoutId, PlayerSetup, PlayerSnapshot, PowerRule, WeaponState } from './types';
+import type { BotDifficulty, LoadoutId, PlayerSetup, PlayerSnapshot, PowerRule, WeaponState } from './types';
 
 interface DrawOptions {
     showTurnPrompt: boolean;
@@ -22,6 +22,8 @@ export class Tank {
     public readonly name: string;
     public readonly color: string;
     public readonly loadout: LoadoutId;
+    public readonly isBot: boolean;
+    public readonly botDifficulty: BotDifficulty;
 
     public x = 0;
     public y = 0;
@@ -43,6 +45,8 @@ export class Tank {
         this.name = setup.name;
         this.color = setup.color;
         this.loadout = setup.loadout;
+        this.isBot = Boolean(setup.isBot);
+        this.botDifficulty = setup.botDifficulty ?? 1;
         this.weapons = setup.weapons ? cloneWeapons(setup.weapons) : createWeaponsForLoadout(setup.loadout);
         this.shield = Math.max(0, Math.min(MAX_SHIELD, setup.shield ?? 0));
         this.maxShield = this.shield > 0 ? MAX_SHIELD : 0;
@@ -233,6 +237,7 @@ export class Tank {
         this.maxShield = this.shield > 0 ? MAX_SHIELD : 0;
     }
 }
+
 
 
 

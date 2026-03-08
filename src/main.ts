@@ -2,6 +2,7 @@ import './style.css';
 import { AudioManager } from './AudioManager';
 import {
     addWeaponAmmo,
+    BOT_DIFFICULTY_PRESETS,
     COLOR_OPTIONS,
     createWeaponsForLoadout,
     getWeaponSellPrice,
@@ -17,6 +18,7 @@ import {
 import { Game, type HudSnapshot, type RoundSummary } from './Game';
 import { Network } from './Network';
 import type {
+    BotDifficulty,
     GameMessage,
     LobbyPlayer,
     LoadoutId,
@@ -60,6 +62,8 @@ type CampaignPlayer = {
     color: string;
     loadout: LoadoutId;
     isHost: boolean;
+    isBot: boolean;
+    botDifficulty: BotDifficulty;
     weapons: WeaponState[];
     shield: number;
     credits: number;
@@ -468,6 +472,7 @@ let campaignRoundHistory: RoundSummary[] = [];
 let campaignComplete = false;
 let startTimer: number | null = null;
 let shopStartTimer: number | null = null;
+let botShopTimer: number | null = null;
 let activeBoardTab: 'battle' | 'campaign' = 'battle';
 let latestHudSnapshot: HudSnapshot | null = null;
 let weaponSelectFocused = false;
@@ -547,6 +552,7 @@ weaponSelect.addEventListener('blur', () => {
 });
 weaponSelect.addEventListener('change', () => {
     game?.selectWeapon(Number(weaponSelect.value));
+    weaponSelect.blur();
 });
 volumeRangeMenu.addEventListener('input', syncVolumeFromControls);
 volumeRangeGame.addEventListener('input', syncVolumeFromControls);
@@ -799,18 +805,23 @@ function bindNetwork(activeNetwork: Network) {
     activeNetwork.onGameStart = (payload) => {
         currentSettings = { ...payload.settings, terrainThemes: [...payload.settings.terrainThemes], scoring: { ...payload.settings.scoring } };
         currentRound = payload.roundNumber;
-        campaignPlayers = payload.players.map((player) => ({
-            id: player.id,
-            name: player.name,
-            color: player.color,
-            loadout: player.loadout,
-            isHost: player.id === 'host',
-            weapons: (player.weapons ?? createWeaponsForLoadout(player.loadout)).map((weapon) => ({ ...weapon })),
-            shield: player.shield ?? campaignPlayers.find((entry) => entry.id === player.id)?.shield ?? 0,
-            credits: campaignPlayers.find((entry) => entry.id === player.id)?.credits ?? 0,
-            shopReady: false,
-            stats: payload.campaignStats.find((entry) => entry.id === player.id) ?? createEmptyStats(player.id)
-        }));
+        campaignPlayers = payload.players.map((player) => {
+            const existing = campaignPlayers.find((entry) => entry.id === player.id);
+            return {
+                id: player.id,
+                name: player.name,
+                color: player.color,
+                loadout: player.loadout,
+                isHost: player.id === 'host',
+                isBot: existing?.isBot ?? Boolean(player.isBot),
+                botDifficulty: existing?.botDifficulty ?? player.botDifficulty ?? 1,
+                weapons: (player.weapons ?? createWeaponsForLoadout(player.loadout)).map((weapon) => ({ ...weapon })),
+                shield: player.shield ?? existing?.shield ?? 0,
+                credits: existing?.credits ?? 0,
+                shopReady: false,
+                stats: payload.campaignStats.find((entry) => entry.id === player.id) ?? createEmptyStats(player.id)
+            };
+        });
         launchMatch(payload, activeNetwork);
     };
 
@@ -850,17 +861,28 @@ function renderLobby() {
 function renderLocalLobby() {
     lobbyEyebrow.textContent = 'LOCAL SKIRMISH';
     lobbyTitle.textContent = `Local Lobby (${localLobbyPlayers.length} pilots)`;
-    lobbyRoster.innerHTML = localLobbyPlayers.map((player) => `
+    lobbyRoster.innerHTML = localLobbyPlayers.map((player) => {
+        const botPreset = BOT_DIFFICULTY_PRESETS[player.botDifficulty ?? 1];
+        return `
         <article class="pilot-card editable ${player.ready ? 'ready' : ''}" data-player-id="${player.id}">
             <div class="pilot-row">
                 <span class="pilot-chip" style="--chip:${player.color}"></span>
                 <div>
-                    <h3>Local Pilot</h3>
-                    <p>${LOADOUTS[player.loadout].name}</p>
+                    <h3>${player.isBot ? 'Bot Pilot' : 'Local Pilot'}</h3>
+                    <p>${LOADOUTS[player.loadout].name}${player.isBot ? ` // BOT ${botPreset.level}` : ''}</p>
                 </div>
+            </div>
+            <div class="bot-mode-toggle">
+                <button type="button" class="pixel-button ghost compact ${player.isBot ? '' : 'active'}" data-role="set-human">Human</button>
+                <button type="button" class="pixel-button ghost compact ${player.isBot ? 'active' : ''}" data-role="set-bot">Bot</button>
             </div>
             <label class="field-label compact" for="name-${player.id}">Name</label>
             <input id="name-${player.id}" class="pixel-input compact" data-role="name" value="${escapeAttribute(player.name)}" maxlength="16" />
+            ${player.isBot ? `<label class="field-label compact" for="bot-${player.id}">Difficulty</label>
+            <select id="bot-${player.id}" class="pixel-select compact" data-role="bot-difficulty">
+                ${createBotDifficultyOptionsMarkup(player.botDifficulty ?? 1)}
+            </select>
+            <p class="field-help compact-help bot-difficulty-copy">${escapeHtml(botPreset.description)}</p>` : ''}
             <label class="field-label compact">Color</label>
             <div class="color-grid compact">
                 ${COLOR_OPTIONS.map((color) => `<button type="button" class="color-swatch ${player.color === color ? 'active' : ''}" data-role="color" data-color="${color}" style="--swatch:${color}"></button>`).join('')}
@@ -869,9 +891,9 @@ function renderLocalLobby() {
             <select id="loadout-${player.id}" class="pixel-select compact" data-role="loadout">
                 ${Object.entries(LOADOUTS).map(([value, loadout]) => `<option value="${value}" ${player.loadout === value ? 'selected' : ''}>${loadout.name}</option>`).join('')}
             </select>
-            <button class="pixel-button ${player.ready ? 'secondary' : 'primary'}" data-role="toggle-ready">${player.ready ? 'Ready' : 'Lock In'}</button>
-        </article>
-    `).join('');
+            <button class="pixel-button ${player.ready ? 'secondary' : 'primary'}" data-role="toggle-ready">${player.ready ? 'Ready' : player.isBot ? 'Lock Bot' : 'Lock In'}</button>
+        </article>`;
+    }).join('');
 
     lobbyRoster.querySelectorAll<HTMLElement>('[data-player-id]').forEach((card) => {
         const playerId = card.dataset.playerId;
@@ -881,7 +903,24 @@ function renderLocalLobby() {
 
         const nameInput = card.querySelector<HTMLInputElement>('[data-role="name"]');
         nameInput?.addEventListener('input', () => {
-            player.name = nameInput.value.trim() || 'Pilot';
+            player.name = nameInput.value;
+            player.ready = false;
+            scheduleAutoStartIfReady();
+        });
+        nameInput?.addEventListener('blur', () => {
+            player.name = nameInput.value.trim() || (player.isBot ? getDefaultBotName(player.botDifficulty ?? 1) : 'Pilot');
+            if (nameInput.value !== player.name) {
+                nameInput.value = player.name;
+            }
+            renderLocalLobby();
+        });
+
+        const difficultySelect = card.querySelector<HTMLSelectElement>('[data-role="bot-difficulty"]');
+        difficultySelect?.addEventListener('change', () => {
+            player.botDifficulty = coerceBotDifficulty(Number(difficultySelect.value));
+            if (!player.name.trim() || Object.values(BOT_DIFFICULTY_PRESETS).some((preset) => preset.title === player.name)) {
+                player.name = getDefaultBotName(player.botDifficulty);
+            }
             player.ready = false;
             renderLocalLobby();
         });
@@ -901,6 +940,27 @@ function renderLocalLobby() {
             });
         });
 
+        card.querySelector<HTMLButtonElement>('[data-role="set-human"]')?.addEventListener('click', () => {
+            if (!player.isBot) return;
+            player.isBot = false;
+            player.ready = false;
+            if (!player.name.trim() || Object.values(BOT_DIFFICULTY_PRESETS).some((preset) => preset.title === player.name)) {
+                player.name = 'Pilot';
+            }
+            renderLocalLobby();
+        });
+
+        card.querySelector<HTMLButtonElement>('[data-role="set-bot"]')?.addEventListener('click', () => {
+            if (player.isBot) return;
+            player.isBot = true;
+            player.botDifficulty = player.botDifficulty ?? 4;
+            player.ready = false;
+            if (!player.name.trim() || player.name.startsWith('Pilot')) {
+                player.name = getDefaultBotName(player.botDifficulty);
+            }
+            renderLocalLobby();
+        });
+
         const readyButton = card.querySelector<HTMLButtonElement>('[data-role="toggle-ready"]');
         readyButton?.addEventListener('click', () => {
             player.ready = !player.ready;
@@ -912,6 +972,18 @@ function renderLocalLobby() {
     scheduleAutoStartIfReady();
 }
 
+function createBotDifficultyOptionsMarkup(selectedDifficulty: BotDifficulty) {
+    return (Object.values(BOT_DIFFICULTY_PRESETS) as Array<typeof BOT_DIFFICULTY_PRESETS[BotDifficulty]>).map((preset) => `<option value="${preset.level}" ${preset.level === selectedDifficulty ? 'selected' : ''}>${preset.level}. ${preset.title}</option>`).join('');
+}
+
+function getDefaultBotName(difficulty: BotDifficulty) {
+    return BOT_DIFFICULTY_PRESETS[difficulty].title;
+}
+
+function coerceBotDifficulty(value: number): BotDifficulty {
+    return Math.max(1, Math.min(10, Math.round(value || 1))) as BotDifficulty;
+}
+
 function createLocalLobbyPlayers(count: number): LobbyPlayer[] {
     const profile = readProfileForm();
     return Array.from({ length: count }, (_, index) => ({
@@ -920,10 +992,11 @@ function createLocalLobbyPlayers(count: number): LobbyPlayer[] {
         color: index === 0 ? profile.color : COLOR_OPTIONS[index % COLOR_OPTIONS.length],
         loadout: index === 0 ? profile.loadout : 'balanced',
         ready: false,
-        isHost: index === 0
+        isHost: index === 0,
+        isBot: false,
+        botDifficulty: 4
     }));
 }
-
 function scheduleAutoStartIfReady() {
     cancelScheduledStart();
     if (lobbyMode === 'online-host' && network && lobbyPlayers.length >= 2 && lobbyPlayers.every((player) => player.ready)) {
@@ -945,6 +1018,10 @@ function cancelScheduledStart() {
     if (shopStartTimer !== null) {
         window.clearTimeout(shopStartTimer);
         shopStartTimer = null;
+    }
+    if (botShopTimer !== null) {
+        window.clearTimeout(botShopTimer);
+        botShopTimer = null;
     }
 }
 
@@ -1074,6 +1151,8 @@ function handleIntermissionMessage(message: GameMessage) {
                     color: existing?.color ?? '#fff4d7',
                     loadout: existing?.loadout ?? 'balanced',
                     isHost: existing?.isHost ?? false,
+                    isBot: existing?.isBot ?? Boolean(player.isBot),
+                    botDifficulty: existing?.botDifficulty ?? player.botDifficulty ?? 1,
                     weapons: player.weapons.map((weapon) => ({ ...weapon })),
                     shield: player.shield,
                     credits: player.credits,
@@ -1109,6 +1188,8 @@ function broadcastShopSync() {
             campaignComplete,
             players: campaignPlayers.map((player) => ({
                 id: player.id,
+                isBot: player.isBot,
+                botDifficulty: player.botDifficulty,
                 credits: player.credits,
                 shopReady: player.shopReady,
                 weapons: player.weapons.map((weapon) => ({ ...weapon })),
@@ -1268,7 +1349,7 @@ function getInteractivePlayerIds() {
     if (!network) {
         if (intermissionStage === 'shop') {
             const localPlayer = getLocalShopPlayer();
-            return new Set(localPlayer ? [localPlayer.id] : []);
+            return new Set(localPlayer && !localPlayer.isBot ? [localPlayer.id] : []);
         }
         return new Set(campaignPlayers.map((player) => player.id));
     }
@@ -1373,6 +1454,92 @@ function handleShopKeydown(event: KeyboardEvent) {
     }
 }
 
+function getBotShopRole(type: WeaponType) {
+    if (type === 'shield_small' || type === 'shield_medium' || type === 'shield_large') return 'defense';
+    if (type === 'wall' || type === 'large_wall' || type === 'relocator' || type === 'bunker_buster' || type === 'homing_missile') return 'utility';
+    return 'attack';
+}
+
+function queueBotShopTurnIfNeeded(player: CampaignPlayer | null) {
+    if (network || !player?.isBot || player.shopReady) {
+        if (botShopTimer !== null) {
+            window.clearTimeout(botShopTimer);
+            botShopTimer = null;
+        }
+        return;
+    }
+    if (botShopTimer !== null) return;
+    botShopTimer = window.setTimeout(() => {
+        botShopTimer = null;
+        runBotShopTurn(player.id);
+    }, 520);
+}
+
+function runBotShopTurn(playerId: string) {
+    const player = campaignPlayers.find((entry) => entry.id === playerId);
+    if (!player || !player.isBot || player.shopReady) return;
+
+    let credits = player.credits;
+    let weapons = player.weapons.map((weapon) => ({ ...weapon }));
+    const difficulty = player.botDifficulty ?? 1;
+    const budgetCap = Math.round(credits * Math.min(0.96, 0.48 + difficulty * 0.045));
+    const purchaseCap = Math.max(1, Math.min(5, 1 + Math.floor(difficulty / 2)));
+    let spent = 0;
+    let purchases = 0;
+
+    const market = SHOP_WEAPON_ORDER.filter((type) => getWeaponShopPrice(type, currentSettings.weaponCostMultiplier) !== null);
+    const tryBuyRole = (role: 'attack' | 'utility' | 'defense') => {
+        const affordable = market.filter((type) => {
+            const price = getWeaponShopPrice(type, currentSettings.weaponCostMultiplier);
+            return price !== null && price <= credits && spent + price <= budgetCap && getBotShopRole(type) === role;
+        });
+        if (!affordable.length) return false;
+        const choice = affordable[Math.floor(Math.random() * affordable.length)];
+        const price = getWeaponShopPrice(choice, currentSettings.weaponCostMultiplier);
+        if (price === null) return false;
+        credits -= price;
+        spent += price;
+        purchases += 1;
+        weapons = addWeaponAmmo(weapons, choice, 1);
+        return true;
+    };
+
+    const plannedRoles: Array<'attack' | 'utility' | 'defense'> = [];
+    if (player.shield < 25) plannedRoles.push('defense');
+    plannedRoles.push('attack');
+    if (difficulty >= 3) plannedRoles.push(difficulty >= 6 ? 'utility' : 'attack');
+    if (difficulty >= 5) plannedRoles.push('attack');
+    if (difficulty >= 7) plannedRoles.push(Math.random() > 0.5 ? 'utility' : 'defense');
+
+    plannedRoles.forEach((role) => {
+        if (purchases < purchaseCap) {
+            tryBuyRole(role);
+        }
+    });
+
+    while (purchases < purchaseCap) {
+        const remainingRoles: Array<'attack' | 'utility' | 'defense'> = difficulty >= 6
+            ? ['attack', 'utility', 'defense']
+            : ['attack', 'defense'];
+        const pickedRole = remainingRoles[Math.floor(Math.random() * remainingRoles.length)];
+        if (!tryBuyRole(pickedRole)) break;
+    }
+
+    campaignPlayers = campaignPlayers.map((entry) => entry.id === playerId ? {
+        ...entry,
+        credits,
+        weapons,
+        shopReady: true
+    } : entry);
+
+    const currentIndex = campaignPlayers.findIndex((entry) => entry.id === playerId);
+    const nextIndex = campaignPlayers.findIndex((entry, index) => index > currentIndex && !entry.shopReady);
+    const fallbackIndex = campaignPlayers.findIndex((entry) => !entry.shopReady);
+    localShopCursor = nextIndex >= 0 ? nextIndex : Math.max(0, fallbackIndex);
+    shopSelection = null;
+    renderIntermission();
+    maybeLaunchNextRound();
+}
 function renderIntermission() {
     if (intermissionStage === 'hidden' || !latestRoundSummary) {
         intermissionScreen.classList.add('hidden');
@@ -1747,6 +1914,7 @@ function renderShopScreen() {
         </div>
     `;
     restoreShopScrollState();
+    queueBotShopTurnIfNeeded(focusPlayer);
 }
 function getRoundRankings(players: RoundSummary['players'], winnerId: string | null) {
     return [...players].sort((left, right) => {
@@ -2108,6 +2276,9 @@ function updateGameHud(snapshot: HudSnapshot) {
     renderBoard(snapshot);
 }
 function syncWeaponSelect(snapshot: HudSnapshot) {
+    if (weaponSelectFocused && !snapshot.canSelectWeapon) {
+        weaponSelect.blur();
+    }
     if (weaponSelectFocused) return;
 
     const weaponOptionsMarkup = snapshot.weaponOptions.map((option) => `<option value="${option.index}" ${option.disabled ? 'disabled' : ''}>${option.label}</option>`).join('');
@@ -2185,6 +2356,8 @@ function toCampaignPlayer(player: LobbyPlayer): CampaignPlayer {
         color: player.color,
         loadout: player.loadout,
         isHost: player.isHost,
+        isBot: Boolean(player.isBot),
+        botDifficulty: player.botDifficulty ?? 1,
         weapons: createWeaponsForLoadout(player.loadout),
         shield: 0,
         credits: 0,
@@ -2199,7 +2372,9 @@ function toPlayerSetup(player: CampaignPlayer): PlayerSetup {
         color: player.color,
         loadout: player.loadout,
         weapons: player.weapons.map((weapon) => ({ ...weapon })),
-        shield: player.shield
+        shield: player.shield,
+        isBot: player.isBot,
+        botDifficulty: player.botDifficulty
     };
 }
 function createEmptyStats(id: string): PlayerStatsSnapshot {
@@ -2245,6 +2420,14 @@ function escapeHtml(value: string) {
 function escapeAttribute(value: string) {
     return escapeHtml(value);
 }
+
+
+
+
+
+
+
+
 
 
 

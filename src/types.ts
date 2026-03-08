@@ -1,5 +1,7 @@
 export type LoadoutId = 'balanced' | 'siege' | 'duelist';
 
+export type BotDifficulty = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10;
+
 export type WeaponType =
     | 'cannon'
     | 'mortar'
@@ -74,6 +76,8 @@ export interface LobbyPlayer {
     loadout: LoadoutId;
     ready: boolean;
     isHost: boolean;
+    isBot?: boolean;
+    botDifficulty?: BotDifficulty;
 }
 
 export interface WeaponState {
@@ -88,6 +92,8 @@ export interface PlayerSetup {
     loadout: LoadoutId;
     weapons?: WeaponState[];
     shield?: number;
+    isBot?: boolean;
+    botDifficulty?: BotDifficulty;
 }
 
 export interface PlayerSnapshot {
@@ -143,6 +149,8 @@ export interface MatchStartPayload {
 
 export interface ShopPlayerSnapshot {
     id: string;
+    isBot?: boolean;
+    botDifficulty?: BotDifficulty;
     credits: number;
     shopReady: boolean;
     weapons: WeaponState[];
@@ -218,6 +226,7 @@ export type GameMessage =
         campaignComplete: boolean;
         players: ShopPlayerSnapshot[];
     };
+
 
 
 
