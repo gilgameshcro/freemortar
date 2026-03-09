@@ -115,6 +115,18 @@ interface ShotTrace {
     points: Array<{ x: number; y: number }>;
 }
 
+interface PendingRemoteShotResult {
+    weaponType: WeaponType;
+    impactX: number;
+    impactY: number;
+    impactDirX: number;
+    impactDirY: number;
+    damageEvents: DamageEvent[];
+    playerStates: PlayerSnapshot[];
+    stats: PlayerStatsSnapshot[];
+    turnNumber: number;
+}
+
 interface PendingBurst {
     delayMs: number;
     ownerId: string;
@@ -224,6 +236,7 @@ export class Game {
     private projectiles: Projectile[] = [];
     private pendingProjectiles: Array<{ delayMs: number; projectile: Projectile; playFire?: boolean }> = [];
     private pendingBursts: PendingBurst[] = [];
+    private pendingRemoteShotResults: PendingRemoteShotResult[] = [];
     private shotTraces: ShotTrace[] = [];
     private damagePopups: DamagePopup[] = [];
     private debris: TerrainDebris[] = [];
@@ -462,6 +475,10 @@ export class Game {
             }
         }
 
+        if (!this.isAuthoritative) {
+            this.processPendingRemoteShotResults();
+        }
+
         const progressiveBlastMoved = this.updateProgressiveBlasts();
         this.updateGravityPulses();
         this.updateTechPulses();
@@ -504,7 +521,7 @@ export class Game {
                 break;
             case 'SHOT_RESULT':
                 if (!this.isAuthoritative) {
-                    this.applyRemoteShotResult(message.weaponType, message.impactX, message.impactY, message.impactDirX, message.impactDirY, message.damageEvents, message.playerStates, message.stats, message.turnNumber);
+                    this.queueRemoteShotResult(message.weaponType, message.impactX, message.impactY, message.impactDirX, message.impactDirY, message.damageEvents, message.playerStates, message.stats, message.turnNumber);
                 }
                 break;
             case 'TURN_STATE':
@@ -668,6 +685,40 @@ export class Game {
             });
         }
     }
+    private queueRemoteShotResult(
+        weaponType: WeaponType,
+        impactX: number,
+        impactY: number,
+        impactDirX: number,
+        impactDirY: number,
+        damageEvents: DamageEvent[],
+        playerStates: PlayerSnapshot[],
+        stats: PlayerStatsSnapshot[],
+        turnNumber: number
+    ) {
+        this.pendingRemoteShotResults.push({ weaponType, impactX, impactY, impactDirX, impactDirY, damageEvents, playerStates, stats, turnNumber });
+    }
+
+    private processPendingRemoteShotResults() {
+        for (let index = this.pendingRemoteShotResults.length - 1; index >= 0; index -= 1) {
+            const pending = this.pendingRemoteShotResults[index];
+            if (pending.turnNumber !== this.state.turnNumber) {
+                this.pendingRemoteShotResults.splice(index, 1);
+                continue;
+            }
+            if (!this.canApplyPendingRemoteShotResult(pending)) continue;
+            this.pendingRemoteShotResults.splice(index, 1);
+            this.applyRemoteShotResult(pending.weaponType, pending.impactX, pending.impactY, pending.impactDirX, pending.impactDirY, pending.damageEvents, pending.playerStates, pending.stats, pending.turnNumber);
+        }
+    }
+
+    private canApplyPendingRemoteShotResult(pending: PendingRemoteShotResult) {
+        const ownerId = pending.damageEvents[0]?.attackerId;
+        const candidate = this.findRemoteProjectileCandidate(pending.weaponType, pending.impactX, pending.impactY, ownerId);
+        if (!candidate) return true;
+        return candidate.bestDistance <= Math.max(6, candidate.projectile.radius * 4);
+    }
+
     private applyRemoteShotResult(
         weaponType: WeaponType,
         impactX: number,
@@ -725,6 +776,7 @@ export class Game {
         this.projectiles = [];
         this.pendingProjectiles = [];
         this.pendingBursts = [];
+        this.pendingRemoteShotResults = [];
         this.awaitingShotResult = false;
         this.applySnapshots(playerStates);
         this.applyStats(stats);
@@ -1237,13 +1289,13 @@ export class Game {
     }
 
 
-    private reconcileRemoteProjectile(weaponType: WeaponType, impactX: number, impactY: number, ownerId?: string) {
+    private findRemoteProjectileCandidate(weaponType: WeaponType, impactX: number, impactY: number, ownerId?: string) {
         const candidates = this.projectiles
             .map((projectile, index) => ({ projectile, index }))
             .filter(({ projectile }) => projectile.weaponType === weaponType && (!ownerId || projectile.ownerId === ownerId));
-        if (!candidates.length) return;
+        if (!candidates.length) return null;
 
-        const best = candidates
+        return candidates
             .map(({ projectile, index }) => {
                 let bestDistance = Number.POSITIVE_INFINITY;
                 let bestHistoryIndex = projectile.history.length - 1;
@@ -1257,6 +1309,11 @@ export class Game {
                 return { projectile, index, bestDistance, bestHistoryIndex };
             })
             .sort((left, right) => left.bestDistance - right.bestDistance)[0];
+    }
+
+    private reconcileRemoteProjectile(weaponType: WeaponType, impactX: number, impactY: number, ownerId?: string) {
+        const best = this.findRemoteProjectileCandidate(weaponType, impactX, impactY, ownerId);
+        if (!best) return;
 
         this.projectiles.splice(best.index, 1);
         const traceHistory = best.projectile.history
