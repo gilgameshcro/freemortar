@@ -234,6 +234,18 @@ app.innerHTML = `
                                 <span class="field-label">Rounds</span>
                                 <input id="roundCount" class="pixel-input" type="number" min="1" max="99" step="1" value="1" />
                             </label>
+                            <label id="hostBotCountField" class="setting-field span-1 hidden" for="hostBotCount">
+                                <span class="field-label">Starting Bots</span>
+                                <select id="hostBotCount" class="pixel-select">
+                                    <option value="0" selected>0</option>
+                                    <option value="1">1</option>
+                                    <option value="2">2</option>
+                                    <option value="3">3</option>
+                                    <option value="4">4</option>
+                                    <option value="5">5</option>
+                                    <option value="6">6</option>
+                                </select>
+                            </label>
                             <label class="setting-field span-2" for="roundOrder">
                                 <span class="field-label">Round Order</span>
                                 <select id="roundOrder" class="pixel-select">
@@ -326,7 +338,10 @@ app.innerHTML = `
                         <p id="lobbyEyebrow" class="eyebrow">NO ACTIVE LOBBY</p>
                         <h2 id="lobbyTitle">Stand by</h2>
                     </div>
-                    <button id="btnLeaveLobby" class="pixel-button ghost">Leave Lobby</button>
+                    <div class="lobby-header-actions">
+                        <button id="btnAddLobbyBot" class="pixel-button ghost hidden" type="button">Add Bot</button>
+                        <button id="btnLeaveLobby" class="pixel-button ghost">Leave Lobby</button>
+                    </div>
                 </div>
                 <p id="lobbyStatus" class="lobby-status">Host, join, or create a local lobby to begin.</p>
                 <div id="lobbyRoster" class="lobby-roster"></div>
@@ -428,6 +443,8 @@ const shieldVisibilityInput = mustElement<HTMLInputElement>('shieldVisibility');
 const debugUnlimitedArsenalInput = mustElement<HTMLInputElement>('debugUnlimitedArsenal');
 const terrainThemeInputs = Array.from(document.querySelectorAll<HTMLInputElement>('input[name="terrainThemePool"]'));
 const roundCountInput = mustElement<HTMLInputElement>('roundCount');
+const hostBotCountField = mustElement<HTMLElement>('hostBotCountField');
+const hostBotCountSelect = mustElement<HTMLSelectElement>('hostBotCount');
 const roundOrderSelect = mustElement<HTMLSelectElement>('roundOrder');
 const weaponCostMultiplierInput = mustElement<HTMLInputElement>('weaponCostMultiplier');
 const scoringDamageToggle = mustElement<HTMLInputElement>('scoringDamageToggle');
@@ -452,6 +469,7 @@ const btnHost = mustElement<HTMLButtonElement>('btnHost');
 const btnJoin = mustElement<HTMLButtonElement>('btnJoin');
 const btnLocal = mustElement<HTMLButtonElement>('btnLocal');
 const btnReady = mustElement<HTMLButtonElement>('btnReady');
+const btnAddLobbyBot = mustElement<HTMLButtonElement>('btnAddLobbyBot');
 const btnLeaveLobby = mustElement<HTMLButtonElement>('btnLeaveLobby');
 const btnLeaveMatch = mustElement<HTMLButtonElement>('btnLeaveMatch');
 const btnMuteMenu = mustElement<HTMLButtonElement>('btnMuteMenu');
@@ -651,6 +669,12 @@ btnReady.addEventListener('click', async () => {
     audio.playReady();
 });
 
+btnAddLobbyBot.addEventListener('click', () => {
+    if (!network || lobbyMode !== 'online-host') return;
+    network.addBot();
+    audio.playReady();
+});
+
 btnLeaveLobby.addEventListener('click', leaveLobby);
 btnLeaveMatch.addEventListener('click', leaveMatch);
 intermissionScreen.addEventListener('click', handleIntermissionClick);
@@ -731,6 +755,7 @@ function openBattleSetup(mode: SetupLaunchMode) {
     btnBattleSetupConfirm.textContent = mode === 'online-host' ? 'Create Room' : 'Create Local Lobby';
     btnHost.classList.toggle('active', mode === 'online-host');
     btnLocal.classList.toggle('active', mode === 'local');
+    hostBotCountField.classList.toggle('hidden', mode !== 'online-host');
     battleSetupPanel.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
@@ -766,6 +791,12 @@ async function createHostedLobby() {
         lobbyStatus.textContent = `Room ${roomCode} is live. Share the code and wait for everyone to ready up.`;
         lobbyPanel.classList.remove('hidden');
         renderLobby();
+        const startingBots = Math.max(0, Math.min(MAX_PLAYERS - 1, Number(hostBotCountSelect.value) || 0));
+        if (startingBots > 0) {
+            for (let index = 0; index < startingBots; index += 1) {
+                network.addBot();
+            }
+        }
         updateReadyButton();
         closeBattleSetup();
     } catch (error) {
@@ -857,8 +888,109 @@ function bindNetwork(activeNetwork: Network) {
         lobbyStatus.textContent = message;
     };
 }
+function renderReadonlyOnlinePilotCard(player: LobbyPlayer) {
+    return `
+        <article class="pilot-card ${player.ready ? 'ready' : ''}">
+            <div class="pilot-row">
+                <span class="pilot-chip" style="--chip:${player.color}"></span>
+                <div>
+                    <h3>${escapeHtml(player.name)}</h3>
+                    <p>${LOADOUTS[player.loadout].name}${player.isHost ? ' // HOST' : player.isBot ? ` // BOT ${player.botDifficulty ?? 1}` : ''}</p>
+                </div>
+            </div>
+            <div class="status-tag ${player.ready ? 'ready' : ''}">${player.ready ? 'READY' : 'TUNING'}</div>
+        </article>
+    `;
+}
+
+function renderHostedLobby() {
+    lobbyEyebrow.textContent = 'ONLINE HOST LOBBY';
+    lobbyTitle.textContent = network ? `Room ${network.roomCode}` : 'Online Lobby';
+    btnAddLobbyBot.classList.remove('hidden');
+    btnAddLobbyBot.disabled = lobbyPlayers.length >= MAX_PLAYERS;
+    lobbyRoster.innerHTML = `
+        ${lobbyPlayers.map((player) => {
+            if (!player.isBot) {
+                return renderReadonlyOnlinePilotCard(player);
+            }
+            const botPreset = BOT_DIFFICULTY_PRESETS[player.botDifficulty ?? 1];
+            return `
+                <article class="pilot-card editable ${player.ready ? 'ready' : ''}" data-host-bot-id="${player.id}">
+                    <div class="pilot-row">
+                        <span class="pilot-chip" style="--chip:${player.color}"></span>
+                        <div>
+                            <h3>Lobby Bot</h3>
+                            <p>${LOADOUTS[player.loadout].name} // BOT ${botPreset.level}</p>
+                        </div>
+                    </div>
+                    <div class="bot-mode-toggle">
+                        <button type="button" class="pixel-button ${player.ready ? 'secondary' : 'primary'} compact" data-role="toggle-ready">${player.ready ? 'Ready' : 'Lock Bot'}</button>
+                        <button type="button" class="pixel-button ghost compact" data-role="remove-bot">Remove</button>
+                    </div>
+                    <label class="field-label compact" for="host-bot-name-${player.id}">Name</label>
+                    <input id="host-bot-name-${player.id}" class="pixel-input compact" data-role="name" value="${escapeAttribute(player.name)}" maxlength="16" />
+                    <label class="field-label compact" for="host-bot-difficulty-${player.id}">Difficulty</label>
+                    <select id="host-bot-difficulty-${player.id}" class="pixel-select compact" data-role="bot-difficulty">
+                        ${createBotDifficultyOptionsMarkup(player.botDifficulty ?? 1)}
+                    </select>
+                    <p class="field-help compact-help bot-difficulty-copy">${escapeHtml(botPreset.description)}</p>
+                    <label class="field-label compact">Color</label>
+                    <div class="color-grid compact">
+                        ${COLOR_OPTIONS.map((color) => `<button type="button" class="color-swatch ${player.color === color ? 'active' : ''}" data-role="color" data-color="${color}" style="--swatch:${color}"></button>`).join('')}
+                    </div>
+                    <label class="field-label compact" for="host-bot-loadout-${player.id}">Loadout</label>
+                    <select id="host-bot-loadout-${player.id}" class="pixel-select compact" data-role="loadout">
+                        ${Object.entries(LOADOUTS).map(([value, loadout]) => `<option value="${value}" ${player.loadout === value ? 'selected' : ''}>${loadout.name}</option>`).join('')}
+                    </select>
+                </article>
+            `;
+        }).join('')}
+    `;
+
+    lobbyRoster.querySelectorAll<HTMLElement>('[data-host-bot-id]').forEach((card) => {
+        const playerId = card.dataset.hostBotId;
+        const activeNetwork = network;
+        if (!playerId || !activeNetwork) return;
+        const player = lobbyPlayers.find((entry) => entry.id === playerId && entry.isBot);
+        if (!player) return;
+
+        const nameInput = card.querySelector<HTMLInputElement>('[data-role="name"]');
+        nameInput?.addEventListener('blur', () => {
+            const nextName = nameInput.value.trim() || getDefaultBotName(player.botDifficulty ?? 1);
+            activeNetwork.updateHostedLobbyPlayer(playerId, { name: nextName, ready: false });
+        });
+
+        card.querySelector<HTMLSelectElement>('[data-role="bot-difficulty"]')?.addEventListener('change', (event) => {
+            const target = event.currentTarget as HTMLSelectElement;
+            activeNetwork.updateHostedLobbyPlayer(playerId, { botDifficulty: coerceBotDifficulty(Number(target.value)), ready: false });
+        });
+
+        card.querySelector<HTMLSelectElement>('[data-role="loadout"]')?.addEventListener('change', (event) => {
+            const target = event.currentTarget as HTMLSelectElement;
+            activeNetwork.updateHostedLobbyPlayer(playerId, { loadout: target.value as LoadoutId, ready: false });
+        });
+
+        card.querySelectorAll<HTMLButtonElement>('[data-role="color"]').forEach((button) => {
+            button.addEventListener('click', () => {
+                activeNetwork.updateHostedLobbyPlayer(playerId, { color: button.dataset.color ?? player.color, ready: false });
+            });
+        });
+
+        card.querySelector<HTMLButtonElement>('[data-role="toggle-ready"]')?.addEventListener('click', () => {
+            activeNetwork.updateHostedLobbyPlayer(playerId, { ready: !player.ready });
+            audio.playReady();
+        });
+
+        card.querySelector<HTMLButtonElement>('[data-role="remove-bot"]')?.addEventListener('click', () => {
+            activeNetwork.removeHostedLobbyPlayer(playerId);
+        });
+    });
+}
+
 function renderLobby() {
     cancelScheduledStart();
+    btnAddLobbyBot.classList.add('hidden');
+    btnAddLobbyBot.disabled = false;
     if (lobbyMode === 'idle') {
         lobbyPanel.classList.add('hidden');
         return;
@@ -869,21 +1001,15 @@ function renderLobby() {
         scheduleAutoStartIfReady();
         return;
     }
+    if (lobbyMode === 'online-host') {
+        renderHostedLobby();
+        scheduleAutoStartIfReady();
+        return;
+    }
 
-    lobbyEyebrow.textContent = lobbyMode === 'online-host' ? 'ONLINE HOST LOBBY' : 'ONLINE CLIENT LOBBY';
+    lobbyEyebrow.textContent = 'ONLINE CLIENT LOBBY';
     lobbyTitle.textContent = network ? `Room ${network.roomCode}` : 'Online Lobby';
-    lobbyRoster.innerHTML = lobbyPlayers.map((player) => `
-        <article class="pilot-card ${player.ready ? 'ready' : ''}">
-            <div class="pilot-row">
-                <span class="pilot-chip" style="--chip:${player.color}"></span>
-                <div>
-                    <h3>${escapeHtml(player.name)}</h3>
-                    <p>${LOADOUTS[player.loadout].name} ${player.isHost ? '// HOST' : ''}</p>
-                </div>
-            </div>
-            <div class="status-tag ${player.ready ? 'ready' : ''}">${player.ready ? 'READY' : 'TUNING'}</div>
-        </article>
-    `).join('');
+    lobbyRoster.innerHTML = lobbyPlayers.map((player) => renderReadonlyOnlinePilotCard(player)).join('');
 }
 
 function renderLocalLobby() {

@@ -23,7 +23,7 @@ const mimeByExtension = {
     '.txt': 'text/plain; charset=utf-8'
 };
 
-/** @typedef {{ id: string, name: string, color: string, loadout: string, ready: boolean, isHost: boolean }} LobbyPlayer */
+/** @typedef {{ id: string, name: string, color: string, loadout: string, ready: boolean, isHost: boolean, isBot?: boolean, botDifficulty?: number }} LobbyPlayer */
 /** @typedef {{ code: string, hostSocketId: string, players: Map<string, LobbyPlayer>, socketToPlayer: Map<string, string> }} Room */
 
 /** @type {Map<string, Room>} */
@@ -90,7 +90,9 @@ io.on('connection', (socket) => {
             color: sanitizeColor(player?.color),
             loadout: sanitizeLoadout(player?.loadout),
             ready: false,
-            isHost: false
+            isHost: false,
+            isBot: false,
+            botDifficulty: 1
         });
         room.socketToPlayer.set(socket.id, playerId);
         socket.join(room.code);
@@ -110,6 +112,47 @@ io.on('connection', (socket) => {
         membership.player.color = sanitizeColor(patch?.color);
         membership.player.loadout = sanitizeLoadout(patch?.loadout);
         membership.player.ready = false;
+        broadcastLobbyState(membership.room);
+    });
+
+    socket.on('add-bot', () => {
+        const membership = getMembership(socket.id);
+        if (!membership || !membership.player.isHost) return;
+        if (membership.room.players.size >= MAX_PLAYERS) return;
+        const botId = generateBotId(membership.room);
+        membership.room.players.set(botId, {
+            id: botId,
+            name: generateBotName(membership.room),
+            color: pickOpenColor(membership.room),
+            loadout: 'balanced',
+            ready: false,
+            isHost: false,
+            isBot: true,
+            botDifficulty: 4
+        });
+        broadcastLobbyState(membership.room);
+    });
+
+    socket.on('host-update-player', ({ playerId, patch }) => {
+        const membership = getMembership(socket.id);
+        if (!membership || !membership.player.isHost) return;
+        const target = membership.room.players.get(String(playerId ?? ''));
+        if (!target || !target.isBot) return;
+        if (patch && typeof patch.name !== 'undefined') target.name = sanitizeName(patch.name);
+        if (patch && typeof patch.color !== 'undefined') target.color = sanitizeColor(patch.color);
+        if (patch && typeof patch.loadout !== 'undefined') target.loadout = sanitizeLoadout(patch.loadout);
+        if (patch && typeof patch.ready !== 'undefined') target.ready = Boolean(patch.ready);
+        if (patch && typeof patch.botDifficulty !== 'undefined') target.botDifficulty = sanitizeBotDifficulty(patch.botDifficulty);
+        broadcastLobbyState(membership.room);
+    });
+
+    socket.on('host-remove-player', ({ playerId }) => {
+        const membership = getMembership(socket.id);
+        if (!membership || !membership.player.isHost) return;
+        const targetId = String(playerId ?? '');
+        const target = membership.room.players.get(targetId);
+        if (!target || !target.isBot) return;
+        membership.room.players.delete(targetId);
         broadcastLobbyState(membership.room);
     });
 
@@ -182,7 +225,9 @@ function createRoom(hostSocketId, player) {
                 color: sanitizeColor(player?.color),
                 loadout: sanitizeLoadout(player?.loadout),
                 ready: false,
-                isHost: true
+                isHost: true,
+                isBot: false,
+                botDifficulty: 1
             }]
         ]),
         socketToPlayer: new Map([[hostSocketId, 'host']])
@@ -230,6 +275,27 @@ function generatePlayerId(room) {
     return candidate;
 }
 
+function generateBotId(room) {
+    let index = 1;
+    let candidate = `bot-${index}`;
+    while (room.players.has(candidate)) {
+        index += 1;
+        candidate = `bot-${index}`;
+    }
+    return candidate;
+}
+
+function generateBotName(room) {
+    const count = [...room.players.values()].filter((player) => player.isBot).length + 1;
+    return `Bot ${count}`;
+}
+
+function pickOpenColor(room) {
+    const palette = ['#ff7a59', '#3bc9db', '#b197fc', '#94d82d', '#ffd43b', '#ff8787', '#74c0fc', '#f783ac'];
+    const used = new Set([...room.players.values()].map((player) => player.color));
+    return palette.find((color) => !used.has(color)) ?? palette[countHash(room.code) % palette.length];
+}
+
 function sanitizeName(value) {
     const text = String(value ?? '').trim();
     return text.slice(0, 16) || 'Pilot';
@@ -243,6 +309,14 @@ function sanitizeColor(value) {
 function sanitizeLoadout(value) {
     const text = String(value ?? '').trim();
     return text || 'balanced';
+}
+
+function sanitizeBotDifficulty(value) {
+    return Math.max(1, Math.min(10, Math.round(Number(value ?? 1) || 1)));
+}
+
+function countHash(value) {
+    return [...String(value)].reduce((sum, char) => sum + char.charCodeAt(0), 0);
 }
 
 function readErrorMessage(error) {

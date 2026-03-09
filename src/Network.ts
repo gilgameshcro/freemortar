@@ -2,6 +2,7 @@ import { io, type Socket } from 'socket.io-client';
 import type { GameMessage, LobbyPlayer, MatchStartPayload } from './types';
 
 type EditableLobbyFields = Pick<LobbyPlayer, 'name' | 'color' | 'loadout'>;
+type HostLobbyPatch = Partial<Pick<LobbyPlayer, 'name' | 'color' | 'loadout' | 'ready' | 'botDifficulty'>>;
 
 type LobbyStatePayload = {
     roomCode: string;
@@ -74,6 +75,21 @@ export class Network {
 
     public setReady(ready: boolean) {
         this.socket?.emit('set-ready', { ready });
+    }
+
+    public addBot() {
+        if (this.role !== 'host') return;
+        this.socket?.emit('add-bot');
+    }
+
+    public updateHostedLobbyPlayer(playerId: string, patch: HostLobbyPatch) {
+        if (this.role !== 'host') return;
+        this.socket?.emit('host-update-player', { playerId, patch });
+    }
+
+    public removeHostedLobbyPlayer(playerId: string) {
+        if (this.role !== 'host') return;
+        this.socket?.emit('host-remove-player', { playerId });
     }
 
     public broadcastStart(payload: MatchStartPayload) {
