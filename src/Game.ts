@@ -3,7 +3,8 @@ import {
     clamp,
     cloneWeapons,
     getMaxPowerForHealth,
-    getWeaponShopPrice,
+    getWeaponAmmoUnitPrice,
+    getWeaponExplosionStyle,
     isCombatWeapon,
     lerp,
     normalizeAngle,
@@ -22,6 +23,7 @@ import type {
     GameMessage,
     MatchSettings,
     MatchStartPayload,
+    MirvSpreadMode,
     PlayerSnapshot,
     PlayerStatsSnapshot,
     TerrainTheme,
@@ -70,6 +72,8 @@ export interface HudSnapshot {
     powerLabel: string;
     powerPercent: number;
     angleLabel: string;
+    mirvSpread: MirvSpreadMode;
+    canAdjustMirvSpread: boolean;
     selectedWeaponIndex: number;
     canSelectWeapon: boolean;
     weaponOptions: HudWeaponOption[];
@@ -111,6 +115,17 @@ interface ShotTrace {
     points: Array<{ x: number; y: number }>;
 }
 
+interface PendingBurst {
+    delayMs: number;
+    ownerId: string;
+    weaponType: WeaponType;
+    x: number;
+    y: number;
+    radius: number;
+    damage: number;
+    mode: 'burst' | 'echo_implode' | 'echo_blast';
+}
+
 interface TerrainDebris {
     x: number;
     y: number;
@@ -118,6 +133,45 @@ interface TerrainDebris {
     vy: number;
     color: string;
     life: number;
+}
+
+interface ProgressiveBlastEffect {
+    x: number;
+    y: number;
+    targetRadius: number;
+    currentRadius: number;
+    lastCarvedRadius: number;
+    settleFrames: number;
+    style: 'nuclear' | 'nova_blast' | 'solar' | 'void';
+    coreColor: string;
+    outerColor: string;
+    glowColor: string;
+    rimColor: string;
+}
+
+interface GravityPulseEffect {
+    x: number;
+    y: number;
+    radius: number;
+    maxRadius: number;
+    life: number;
+    maxLife: number;
+    rotation: number;
+    coreColor: string;
+    glowColor: string;
+    lineColor: string;
+}
+
+interface TechPulseEffect {
+    x: number;
+    y: number;
+    size: number;
+    maxSize: number;
+    life: number;
+    maxLife: number;
+    rotation: number;
+    primaryColor: string;
+    secondaryColor: string;
 }
 
 export interface RoundSummaryPlayer {
@@ -164,8 +218,12 @@ export class Game {
     private readonly campaignById = new Map<string, CampaignStats>();
 
     private particles: Particle[] = [];
+    private progressiveBlasts: ProgressiveBlastEffect[] = [];
+    private gravityPulses: GravityPulseEffect[] = [];
+    private techPulses: TechPulseEffect[] = [];
     private projectiles: Projectile[] = [];
-    private pendingProjectiles: Array<{ delayMs: number; projectile: Projectile }> = [];
+    private pendingProjectiles: Array<{ delayMs: number; projectile: Projectile; playFire?: boolean }> = [];
+    private pendingBursts: PendingBurst[] = [];
     private shotTraces: ShotTrace[] = [];
     private damagePopups: DamagePopup[] = [];
     private debris: TerrainDebris[] = [];
@@ -179,6 +237,10 @@ export class Game {
     private screenShake = 0;
     private roundEndEmitted = false;
     private turnInteractionStarted = false;
+    private turnDamageDealt = false;
+    private stalemateCounter = 0;
+    private readonly stalemateLimit = 10;
+    private roundEndReason: 'normal' | 'stalemate' = 'normal';
     private botAimTimer: number | null = null;
     private botFireTimer: number | null = null;
 
@@ -334,13 +396,32 @@ export class Game {
             pending.delayMs -= FIXED_STEP_MS;
             if (pending.delayMs <= 0) {
                 this.projectiles.push(pending.projectile);
+                if (pending.playFire) {
+                    this.audio.playFire(pending.projectile.weaponType);
+                }
                 this.pendingProjectiles.splice(index, 1);
+            }
+        }
+
+        for (let index = this.pendingBursts.length - 1; index >= 0; index -= 1) {
+            const pending = this.pendingBursts[index];
+            pending.delayMs -= FIXED_STEP_MS;
+            if (pending.delayMs <= 0) {
+                this.pendingBursts.splice(index, 1);
+                this.resolveDelayedBurst(pending);
             }
         }
 
         for (let index = this.projectiles.length - 1; index >= 0; index -= 1) {
             const projectile = this.projectiles[index];
             const impact = projectile.step(this.terrain, this.players, this.state.gravity, this.state.wind);
+            const seederDrops = projectile.consumeSeederDrops();
+            if (seederDrops.length) {
+                this.pendingProjectiles.push(...seederDrops.map((drop) => ({ delayMs: 0, projectile: drop, playFire: true })));
+            }
+            if (projectile.consumeRollingSound()) {
+                this.audio.playRollerTick();
+            }
             if (!impact && projectile.shouldSplit(this.terrain)) {
                 this.persistShotTrace(projectile.ownerId, projectile.history);
                 this.projectiles.splice(index, 1, ...projectile.split());
@@ -381,7 +462,10 @@ export class Game {
             }
         }
 
-        const terrainMoved = this.settings.terrainCollapse ? this.terrain.stepCollapse() : false;
+        const progressiveBlastMoved = this.updateProgressiveBlasts();
+        this.updateGravityPulses();
+        this.updateTechPulses();
+        const terrainMoved = (this.settings.terrainCollapse ? this.terrain.stepCollapse() : false) || progressiveBlastMoved;
         const debrisMoved = this.updateDebris();
         const tankMoved = this.settlePlayers();
 
@@ -402,7 +486,7 @@ export class Game {
 
         if (this.state.phase === 'settling') {
             this.resolveTimer = Math.max(0, this.resolveTimer - FIXED_STEP_MS / 1000);
-            if (this.isAuthoritative && this.resolveTimer <= 0 && !tankMoved && !terrainMoved && !debrisMoved && this.projectiles.length === 0 && this.pendingProjectiles.length === 0) {
+            if (this.isAuthoritative && this.resolveTimer <= 0 && !tankMoved && !terrainMoved && !debrisMoved && this.projectiles.length === 0 && this.pendingProjectiles.length === 0 && this.pendingBursts.length === 0 && this.progressiveBlasts.length === 0) {
                 this.advanceTurn();
             }
         }
@@ -425,7 +509,7 @@ export class Game {
                 break;
             case 'TURN_STATE':
                 if (!this.isAuthoritative) {
-                    this.applyTurnState(message.currentPlayerIndex, message.wind, message.turnNumber, message.winnerId, message.playerStates, message.stats, message.roundNumber);
+                    this.applyTurnState(message.currentPlayerIndex, message.wind, message.turnNumber, message.winnerId, message.playerStates, message.stats, message.roundNumber, message.stalemateCounter, message.roundEndReason ?? 'normal');
                 }
                 break;
             default:
@@ -450,6 +534,7 @@ export class Game {
         }
 
         player.selectedWeaponIndex = clamp(message.weaponIndex, 0, player.weapons.length - 1);
+        player.mirvSpread = message.mirvSpread;
         player.setAim(message.angle, message.power, this.settings.powerRule);
         player.ensureWeaponAvailable();
     }
@@ -460,6 +545,7 @@ export class Game {
         const player = this.players.find((entry) => entry.id === message.playerId);
         if (!player || this.currentPlayer?.id !== player.id || this.state.phase !== 'aiming') return;
         player.selectedWeaponIndex = clamp(message.weaponIndex, 0, player.weapons.length - 1);
+        player.mirvSpread = message.mirvSpread;
         player.setAim(message.angle, message.power, this.settings.powerRule);
         this.launchProjectile(player);
     }
@@ -481,6 +567,7 @@ export class Game {
             playerId: tank.id,
             angle: tank.angle,
             power: tank.power,
+            mirvSpread: tank.mirvSpread,
             weaponIndex: tank.selectedWeaponIndex,
             turnNumber: this.state.turnNumber
         });
@@ -496,7 +583,7 @@ export class Game {
         const barrelTip = tank.barrelTip;
         this.recordShot(tank.id, this.getWeaponShotCount(firedWeapon.type));
         this.recordOrdnanceSpend(tank.id, firedWeapon.type);
-        const burst = this.createProjectileBurst(barrelTip.x, barrelTip.y, tank.angle, tank.power, tank.id, firedWeapon.type);
+        const burst = this.createProjectileBurst(barrelTip.x, barrelTip.y, tank.angle, tank.power, tank.id, firedWeapon.type, tank.mirvSpread);
         this.setActiveProjectilesFromBurst(burst, firedWeapon.type);
         this.state.phase = 'projectile';
         this.awaitingShotResult = !this.isAuthoritative;
@@ -512,6 +599,7 @@ export class Game {
                 weaponType: firedWeapon.type,
                 startX: barrelTip.x,
                 startY: barrelTip.y,
+                mirvSpread: tank.mirvSpread,
                 turnNumber: this.state.turnNumber
             });
         }
@@ -520,6 +608,7 @@ export class Game {
         if (message.turnNumber !== this.state.turnNumber) return;
         const player = this.players.find((entry) => entry.id === message.playerId);
         if (!player) return;
+        player.mirvSpread = message.mirvSpread ?? player.mirvSpread;
         player.setAim(message.angle, message.power, this.settings.powerRule);
         let burst: Projectile[];
         if (message.consumeAmmo === false) {
@@ -534,13 +623,14 @@ export class Game {
                     undefined,
                     false,
                     message.power,
-                    message.chaosDepth ?? 0
+                    message.chaosDepth ?? 0,
+                    { mirvSpread: message.mirvSpread ?? player.mirvSpread, allowSeederDrops: false }
                 )
             ];
         } else {
             player.selectedWeaponIndex = clamp(message.weaponIndex, 0, player.weapons.length - 1);
             player.consumeSelectedWeapon();
-            burst = this.createProjectileBurst(message.startX, message.startY, message.angle, message.power, message.playerId, message.weaponType);
+            burst = this.createProjectileBurst(message.startX, message.startY, message.angle, message.power, message.playerId, message.weaponType, message.mirvSpread ?? player.mirvSpread);
         }
         this.setActiveProjectilesFromBurst(burst, message.weaponType);
         this.state.phase = 'projectile';
@@ -550,14 +640,16 @@ export class Game {
     private resolveShot(ownerId: string, weaponType: WeaponType, impactX: number, impactY: number, impactDirX: number, impactDirY: number) {
         const bursts = this.buildImpactBursts(weaponType, impactX, impactY, impactDirX, impactDirY);
         const damageEvents = this.applyWeaponImpact(ownerId, weaponType, bursts);
-        const maxBlastRadius = Math.max(1, ...bursts.map((burst) => Math.max(1, burst.radius)));
+        this.queueImpactFollowups(ownerId, weaponType, impactX, impactY, impactDirX, impactDirY);
+        if (damageEvents.some((event) => event.amount > 0)) this.turnDamageDealt = true;
+        const maxBlastRadius = Math.max(WEAPON_DEFINITIONS[weaponType].blastRadius, ...bursts.map((burst) => Math.max(1, burst.radius)));
         this.spawnDamagePopups(damageEvents);
-        const hasMoreProjectiles = this.projectiles.length > 0 || this.pendingProjectiles.length > 0;
+        const hasMoreProjectiles = this.projectiles.length > 0 || this.pendingProjectiles.length > 0 || this.pendingBursts.length > 0;
         this.resolveTimer = hasMoreProjectiles ? 0 : 0.85;
         this.state.phase = hasMoreProjectiles ? 'projectile' : 'settling';
         this.awaitingShotResult = false;
         if (!this.isSilentImpactWeapon(weaponType)) {
-            this.audio.playExplosion(maxBlastRadius);
+            this.audio.playExplosion(maxBlastRadius, weaponType);
             this.screenShake = Math.max(this.screenShake, maxBlastRadius / 5);
         }
 
@@ -589,14 +681,20 @@ export class Game {
     ) {
         if (turnNumber !== this.state.turnNumber) return;
         this.reconcileRemoteProjectile(weaponType, impactX, impactY, damageEvents[0]?.attackerId);
+        if (damageEvents.some((event) => event.amount > 0)) this.turnDamageDealt = true;
         const bursts = this.buildImpactBursts(weaponType, impactX, impactY, impactDirX, impactDirY);
-        const maxBlastRadius = Math.max(1, ...bursts.map((burst) => Math.max(1, burst.radius)));
-        this.awaitingShotResult = this.projectiles.length > 0 || this.pendingProjectiles.length > 0;
+        this.queueImpactFollowups(damageEvents[0]?.attackerId ?? this.currentPlayer?.id ?? '', weaponType, impactX, impactY, impactDirX, impactDirY);
+        const maxBlastRadius = Math.max(WEAPON_DEFINITIONS[weaponType].blastRadius, ...bursts.map((burst) => Math.max(1, burst.radius)));
+        this.awaitingShotResult = this.projectiles.length > 0 || this.pendingProjectiles.length > 0 || this.pendingBursts.length > 0;
         if (this.isUtilityImpactWeapon(weaponType)) {
             this.applyUtilityImpact(damageEvents[0]?.attackerId ?? this.currentPlayer?.id ?? '', weaponType, bursts);
         } else {
             bursts.forEach((burst) => {
-                this.terrain.carveCircle(burst.x, burst.y, burst.radius);
+                if (this.usesProgressiveBlastEffect(weaponType)) {
+                    this.queueProgressiveBlast(burst.x, burst.y, burst.radius, weaponType);
+                } else {
+                    this.terrain.carveCircle(burst.x, burst.y, burst.radius);
+                }
                 this.spawnExplosion(burst.x, burst.y, weaponType);
             });
         }
@@ -604,11 +702,11 @@ export class Game {
         this.applyStats(stats);
         this.spawnKillDebrisFromEvents(damageEvents);
         this.spawnDamagePopups(damageEvents);
-        const hasMoreProjectiles = this.projectiles.length > 0 || this.pendingProjectiles.length > 0;
+        const hasMoreProjectiles = this.projectiles.length > 0 || this.pendingProjectiles.length > 0 || this.pendingBursts.length > 0;
         this.resolveTimer = hasMoreProjectiles ? 0 : 0.85;
         this.state.phase = hasMoreProjectiles ? 'projectile' : 'settling';
         if (!this.isSilentImpactWeapon(weaponType)) {
-            this.audio.playExplosion(maxBlastRadius);
+            this.audio.playExplosion(maxBlastRadius, weaponType);
             this.screenShake = Math.max(this.screenShake, maxBlastRadius / 5);
         }
     }
@@ -619,11 +717,14 @@ export class Game {
         winnerId: string | null,
         playerStates: PlayerSnapshot[],
         stats: PlayerStatsSnapshot[],
-        roundNumber: number
+        roundNumber: number,
+        stalemateCounter: number,
+        roundEndReason: 'normal' | 'stalemate' = 'normal'
     ) {
         if (roundNumber !== this.roundNumber) return;
         this.projectiles = [];
         this.pendingProjectiles = [];
+        this.pendingBursts = [];
         this.awaitingShotResult = false;
         this.applySnapshots(playerStates);
         this.applyStats(stats);
@@ -631,6 +732,9 @@ export class Game {
         this.state.wind = wind;
         this.state.turnNumber = turnNumber;
         this.state.winnerId = winnerId;
+        this.stalemateCounter = stalemateCounter;
+        this.roundEndReason = roundEndReason;
+        this.turnDamageDealt = false;
         this.state.phase = winnerId ? 'game_over' : 'aiming';
         this.turnInteractionStarted = false;
         if (winnerId) {
@@ -644,6 +748,17 @@ export class Game {
         const livingPlayers = this.players.filter((player) => player.alive);
         if (livingPlayers.length <= 1) {
             this.finishRound(livingPlayers[0]?.id ?? null);
+            return;
+        }
+
+        if (this.turnDamageDealt) {
+            this.stalemateCounter = 0;
+        } else {
+            this.stalemateCounter += 1;
+        }
+        this.turnDamageDealt = false;
+        if (this.stalemateCounter >= this.stalemateLimit) {
+            this.finishRound(this.pickStalemateWinner(), 'stalemate');
             return;
         }
 
@@ -661,9 +776,10 @@ export class Game {
         this.queueBotTurnIfNeeded();
     }
 
-    private finishRound(winnerId: string | null) {
+    private finishRound(winnerId: string | null, reason: 'normal' | 'stalemate' = 'normal') {
         this.state.winnerId = winnerId;
         this.state.phase = 'game_over';
+        this.roundEndReason = reason;
 
         const placements = this.buildPlacementOrder(winnerId);
         placements.forEach((playerId, index) => {
@@ -688,6 +804,8 @@ export class Game {
             turnNumber: this.state.turnNumber,
             winnerId: this.state.winnerId,
             playerStates: this.snapshotPlayers(),
+            stalemateCounter: this.stalemateCounter,
+            roundEndReason: this.roundEndReason,
             stats: this.snapshotStats(),
             roundNumber: this.roundNumber,
             seed: 0,
@@ -713,6 +831,25 @@ export class Game {
             }))
         });
     }
+    private pickStalemateWinner() {
+        const ranked = [...this.players]
+            .filter((player) => player.alive)
+            .sort((left, right) => (right.health + right.shield) - (left.health + left.shield)
+                || (this.roundStatsById.get(right.id)?.damage ?? 0) - (this.roundStatsById.get(left.id)?.damage ?? 0)
+                || (this.campaignById.get(right.id)?.score ?? 0) - (this.campaignById.get(left.id)?.score ?? 0));
+        const first = ranked[0];
+        const second = ranked[1];
+        if (!first) return null;
+        if (!second) return first.id;
+        const firstDurability = first.health + first.shield;
+        const secondDurability = second.health + second.shield;
+        if (firstDurability !== secondDurability) return first.id;
+        const firstDamage = this.roundStatsById.get(first.id)?.damage ?? 0;
+        const secondDamage = this.roundStatsById.get(second.id)?.damage ?? 0;
+        if (firstDamage !== secondDamage) return first.id;
+        return null;
+    }
+
     private settlePlayers() {
         let moved = false;
         for (const tank of this.players) {
@@ -831,6 +968,47 @@ export class Game {
         return damageEvents;
     }
 
+    private drainShieldBurst(ownerId: string, centerX: number, centerY: number, radius: number, amount: number) {
+        if (amount <= 0) return [];
+        const damageEvents: DamageEvent[] = [];
+        for (const tank of this.players) {
+            if (!tank.alive || tank.shield <= 0) continue;
+            const targetY = tank.y - tank.bodyHeight / 2;
+            const distance = Math.hypot(tank.x - centerX, targetY - centerY);
+            if (distance > radius + 10) continue;
+            const shieldDamage = Math.min(tank.shield, amount);
+            if (shieldDamage <= 0) continue;
+            tank.applyShieldDamage(shieldDamage);
+            const targetRoundStats = this.roundStatsById.get(tank.id);
+            if (targetRoundStats) targetRoundStats.damageTaken += shieldDamage;
+            const targetCampaign = this.campaignById.get(tank.id);
+            if (targetCampaign) targetCampaign.totalDamageTaken += shieldDamage;
+            const isSelfHit = tank.id === ownerId;
+            if (!isSelfHit) {
+                const shooterRoundStats = this.roundStatsById.get(ownerId);
+                if (shooterRoundStats) {
+                    shooterRoundStats.damage += shieldDamage;
+                    shooterRoundStats.hits += 1;
+                }
+                const shooterCampaign = this.campaignById.get(ownerId);
+                if (shooterCampaign) {
+                    shooterCampaign.totalDamage += shieldDamage;
+                    shooterCampaign.totalHits += 1;
+                    shooterCampaign.score += this.calculateScoreDelta(shieldDamage, false);
+                }
+            }
+            damageEvents.push({
+                attackerId: ownerId,
+                targetId: tank.id,
+                amount: shieldDamage,
+                x: tank.x,
+                y: tank.y - tank.bodyHeight - 3,
+                killed: false
+            });
+        }
+        return damageEvents;
+    }
+
     private calculateScoreDelta(damage: number, killed: boolean) {
         let delta = 0;
         if (this.settings.scoring.awardDamage) {
@@ -938,20 +1116,117 @@ export class Game {
 
     private spawnExplosion(centerX: number, centerY: number, weaponType: WeaponType) {
         const definition = WEAPON_DEFINITIONS[weaponType];
-        const sparks = 12 + Math.round(definition.blastRadius * 1.6);
-        const smoke = 5 + Math.round(definition.blastRadius * 0.45);
-        for (let index = 0; index < sparks; index += 1) {
-            const angle = this.nextRandom() * Math.PI * 2;
-            const speed = 0.4 + this.nextRandom() * (definition.blastRadius / 8);
-            this.particles.push(new Particle(centerX, centerY, Math.cos(angle) * speed, Math.sin(angle) * speed, 1, definition.projectileColor, 'spark', 18));
+        const style = getWeaponExplosionStyle(weaponType);
+        const spawnRing = (count: number, speedScale: number, color: string, kind: 'spark' | 'dust' | 'smoke' | 'ring', life: number) => {
+            for (let index = 0; index < count; index += 1) {
+                const angle = this.nextRandom() * Math.PI * 2;
+                const speed = 0.18 + this.nextRandom() * speedScale;
+                this.particles.push(new Particle(centerX, centerY, Math.cos(angle) * speed, Math.sin(angle) * speed, 1, color, kind, life));
+            }
+        };
+        const spawnSmoke = (count: number, color: string, life = 34) => {
+            for (let index = 0; index < count; index += 1) {
+                this.particles.push(new Particle(
+                    centerX + this.nextRandom() * 5 - 2.5,
+                    centerY + this.nextRandom() * 3 - 1.5,
+                    this.nextRandom() * 0.45 - 0.225,
+                    -0.18 - this.nextRandom() * 0.34,
+                    2,
+                    color,
+                    'smoke',
+                    life
+                ));
+            }
+        };
+
+        const sparks = 10 + Math.round(definition.blastRadius * 1.25);
+        const dust = 6 + Math.round(definition.blastRadius * 0.7);
+
+        if (style === 'gravity' || style === 'void') {
+            this.queueGravityPulse(centerX, centerY, definition.blastRadius, style === 'void' ? '#b77bff' : definition.projectileColor);
         }
-        for (let index = 0; index < sparks; index += 1) {
-            const angle = this.nextRandom() * Math.PI * 2;
-            const speed = 0.2 + this.nextRandom() * (definition.blastRadius / 10);
-            this.particles.push(new Particle(centerX, centerY, Math.cos(angle) * speed, Math.sin(angle) * speed, 1, '#8d5a3a', 'dust', 24));
+        if (style === 'tech' || style === 'prism') {
+            this.queueTechPulse(centerX, centerY, definition.blastRadius, style === 'prism' ? '#f4f9ff' : definition.projectileColor, style === 'prism' ? definition.projectileColor : definition.trailColor);
         }
-        for (let index = 0; index < smoke; index += 1) {
-            this.particles.push(new Particle(centerX + this.nextRandom() * 4 - 2, centerY + this.nextRandom() * 2 - 1, this.nextRandom() * 0.4 - 0.2, -0.25 - this.nextRandom() * 0.3, 2, '#5d5366', 'smoke', 34));
+
+        switch (style) {
+            case 'precision':
+                spawnRing(sparks, definition.blastRadius / 9, definition.projectileColor, 'spark', 16);
+                spawnRing(Math.max(5, Math.round(sparks * 0.35)), definition.blastRadius / 11, '#f8f4de', 'spark', 12);
+                spawnSmoke(4, '#4e535f', 24);
+                break;
+            case 'chaos':
+                spawnRing(sparks + 8, definition.blastRadius / 7, definition.projectileColor, 'spark', 20);
+                spawnRing(dust, definition.blastRadius / 9, '#ff8c42', 'dust', 22);
+                spawnSmoke(8, '#6f4b66', 30);
+                break;
+            case 'drill':
+                spawnRing(sparks, definition.blastRadius / 10, definition.projectileColor, 'dust', 22);
+                spawnRing(Math.max(4, Math.round(sparks * 0.4)), definition.blastRadius / 8, '#d7c5ff', 'spark', 18);
+                spawnSmoke(6, '#5f576d', 28);
+                break;
+            case 'terrain':
+                spawnRing(dust + 12, definition.blastRadius / 8, '#8d5a3a', 'dust', 26);
+                spawnRing(Math.max(5, Math.round(sparks * 0.3)), definition.blastRadius / 10, definition.projectileColor, 'spark', 16);
+                spawnSmoke(5, '#655144', 26);
+                break;
+            case 'shield':
+                spawnRing(Math.max(8, Math.round(sparks * 0.6)), definition.blastRadius / 10, '#8ff6ff', 'spark', 20);
+                spawnSmoke(4, '#4f7b88', 24);
+                break;
+            case 'tech':
+                spawnRing(Math.max(8, Math.round(sparks * 0.4)), definition.blastRadius / 13, definition.projectileColor, 'spark', 16);
+                spawnRing(Math.max(4, Math.round(sparks * 0.25)), definition.blastRadius / 16, '#b8f8ff', 'spark', 12);
+                spawnSmoke(3, '#48546b', 18);
+                break;
+            case 'gravity':
+                spawnRing(Math.max(8, Math.round(sparks * 0.32)), definition.blastRadius / 15, definition.projectileColor, 'spark', 18);
+                spawnRing(Math.max(5, Math.round(dust * 0.35)), definition.blastRadius / 17, '#19253a', 'dust', 20);
+                spawnSmoke(4, '#39435f', 24);
+                break;
+            case 'void':
+                spawnRing(Math.max(12, Math.round(sparks * 0.42)), definition.blastRadius / 14, '#f0e6ff', 'spark', 18);
+                spawnRing(Math.max(10, Math.round(dust * 0.72)), definition.blastRadius / 18, '#9b5cff', 'dust', 28);
+                spawnSmoke(10, '#261438', 34);
+                break;
+            case 'prism':
+                spawnRing(Math.max(10, Math.round(sparks * 0.34)), definition.blastRadius / 13, definition.projectileColor, 'spark', 16);
+                spawnRing(Math.max(6, Math.round(sparks * 0.18)), definition.blastRadius / 15, '#ffffff', 'spark', 12);
+                spawnSmoke(4, '#435a72', 20);
+                break;
+            case 'shrapnel':
+                spawnRing(sparks + 4, definition.blastRadius / 7.5, definition.projectileColor, 'spark', 15);
+                spawnRing(Math.max(4, Math.round(sparks * 0.35)), definition.blastRadius / 9, '#fff3d1', 'spark', 12);
+                spawnSmoke(3, '#5b5966', 20);
+                break;
+            case 'roller':
+                spawnRing(dust + 8, definition.blastRadius / 9, '#8d5a3a', 'dust', 22);
+                spawnRing(Math.max(4, Math.round(sparks * 0.3)), definition.blastRadius / 10, definition.projectileColor, 'spark', 16);
+                spawnSmoke(4, '#5f5148', 24);
+                break;
+            case 'nuclear':
+            case 'nova_blast':
+            case 'solar':
+                spawnRing(Math.max(20, Math.round(sparks * 0.7)), definition.blastRadius / 14, definition.projectileColor, 'spark', 24);
+                spawnRing(Math.max(18, Math.round(dust * 1.15)), definition.blastRadius / 19, definition.trailColor, 'dust', 34);
+                spawnSmoke(16, '#6f5148', 46);
+                spawnSmoke(10, '#a86d53', 32);
+                break;
+            case 'heavy':
+                spawnRing(sparks + 10, definition.blastRadius / 7, definition.projectileColor, 'spark', 22);
+                spawnRing(dust + 6, definition.blastRadius / 8.5, '#8d5a3a', 'dust', 26);
+                spawnSmoke(9, '#615563', 34);
+                break;
+            case 'ember':
+                spawnRing(sparks, definition.blastRadius / 8.5, definition.projectileColor, 'spark', 18);
+                spawnRing(Math.max(5, Math.round(dust * 0.7)), definition.blastRadius / 10, '#ffb0c1', 'spark', 16);
+                spawnSmoke(6, '#6d5060', 28);
+                break;
+            default:
+                spawnRing(sparks, definition.blastRadius / 8.5, definition.projectileColor, 'spark', 18);
+                spawnRing(dust, definition.blastRadius / 10, '#8d5a3a', 'dust', 24);
+                spawnSmoke(5, '#5d5366', 34);
+                break;
         }
     }
     private persistShotTrace(ownerId: string, history: Array<{ x: number; y: number }>) {
@@ -1003,6 +1278,9 @@ export class Game {
         this.drawSky();
         this.drawMountains();
         this.terrain.draw(this.ctx);
+        this.drawProgressiveBlasts();
+        this.drawGravityPulses();
+        this.drawTechPulses();
         this.drawShotTraces();
         this.drawDebris();
         this.particles.forEach((particle) => particle.draw(this.ctx));
@@ -1022,6 +1300,272 @@ export class Game {
         this.drawDamagePopups();
         this.ctx.restore();
         this.emitHud();
+    }
+
+    private updateProgressiveBlasts() {
+        let changed = false;
+        for (let index = this.progressiveBlasts.length - 1; index >= 0; index -= 1) {
+            const blast = this.progressiveBlasts[index];
+            const previousRadius = blast.currentRadius;
+            const speedFactor = blast.style === 'solar' ? 0.082 : blast.style === 'void' ? 0.066 : 0.072;
+            const minStep = blast.style === 'solar' ? 2.9 : blast.style === 'void' ? 2.3 : 2.6;
+            if (blast.currentRadius < blast.targetRadius) {
+                blast.currentRadius = Math.min(blast.targetRadius, blast.currentRadius + Math.max(minStep, blast.targetRadius * speedFactor));
+                if (blast.currentRadius > blast.lastCarvedRadius + 0.45) {
+                    this.terrain.carveCircle(blast.x, blast.y, blast.currentRadius);
+                    blast.lastCarvedRadius = blast.currentRadius;
+                    changed = true;
+                }
+            } else {
+                blast.settleFrames += 1;
+            }
+            if (blast.currentRadius !== previousRadius) {
+                changed = true;
+            }
+            if (blast.currentRadius >= blast.targetRadius && blast.settleFrames > 10) {
+                this.progressiveBlasts.splice(index, 1);
+            }
+        }
+        return changed;
+    }
+
+    private queueProgressiveBlast(x: number, y: number, radius: number, weaponType: WeaponType) {
+        const style = getWeaponExplosionStyle(weaponType);
+        if (style !== 'nuclear' && style !== 'nova_blast' && style !== 'solar' && style !== 'void') return;
+
+        const palette = style === 'nova_blast'
+            ? { coreColor: '#fffaff', outerColor: '#8fd8ff', glowColor: '#4ea5ff', rimColor: '#eaf8ff' }
+            : style === 'solar'
+                ? { coreColor: '#fff1a8', outerColor: '#ffd36e', glowColor: '#ffe28d', rimColor: '#00000000' }
+                : style === 'void'
+                    ? { coreColor: '#090410', outerColor: '#6d38c9', glowColor: '#b279ff', rimColor: '#f2deff' }
+                    : { coreColor: '#fff1cf', outerColor: '#ff8d4d', glowColor: '#ffbb73', rimColor: '#fff7e8' };
+
+        this.progressiveBlasts.push({
+            x,
+            y,
+            targetRadius: radius,
+            currentRadius: 4,
+            lastCarvedRadius: 0,
+            settleFrames: 0,
+            style,
+            ...palette
+        });
+    }
+
+    private drawProgressiveBlasts() {
+        this.progressiveBlasts.forEach((blast) => {
+            const ratio = Math.max(0, Math.min(1, blast.currentRadius / blast.targetRadius));
+            const outerRadius = Math.max(4, blast.currentRadius);
+            const middleRadius = Math.max(3, outerRadius * 0.72);
+            const coreRadius = Math.max(2, outerRadius * 0.44);
+
+            this.ctx.save();
+            if (blast.style === 'solar') {
+                this.ctx.globalAlpha = Math.max(0.12, 0.32 * (1 - ratio * 0.42));
+                this.ctx.fillStyle = this.colorWithAlpha(blast.glowColor, 1);
+                this.ctx.beginPath();
+                this.ctx.arc(blast.x, blast.y, outerRadius, 0, Math.PI * 2);
+                this.ctx.fill();
+
+                this.ctx.globalAlpha = Math.max(0.18, 0.58 * (1 - ratio * 0.25));
+                this.ctx.fillStyle = this.colorWithAlpha(blast.coreColor, 1);
+                this.ctx.beginPath();
+                this.ctx.arc(blast.x, blast.y, outerRadius * 0.58, 0, Math.PI * 2);
+                this.ctx.fill();
+                this.ctx.restore();
+                return;
+            }
+
+            if (blast.style === 'void') {
+                this.ctx.globalAlpha = Math.max(0.1, 0.28 * (1 - ratio * 0.3));
+                this.ctx.fillStyle = this.colorWithAlpha(blast.glowColor, 1);
+                this.ctx.beginPath();
+                this.ctx.arc(blast.x, blast.y, outerRadius, 0, Math.PI * 2);
+                this.ctx.fill();
+
+                this.ctx.globalAlpha = Math.max(0.18, 0.46 * (1 - ratio * 0.22));
+                this.ctx.fillStyle = this.colorWithAlpha(blast.outerColor, 1);
+                this.ctx.beginPath();
+                this.ctx.arc(blast.x, blast.y, middleRadius, 0, Math.PI * 2);
+                this.ctx.fill();
+
+                this.ctx.globalAlpha = Math.max(0.28, 0.72 * (1 - ratio * 0.18));
+                this.ctx.fillStyle = this.colorWithAlpha(blast.coreColor, 1);
+                this.ctx.beginPath();
+                this.ctx.arc(blast.x, blast.y, coreRadius, 0, Math.PI * 2);
+                this.ctx.fill();
+
+                this.ctx.globalAlpha = Math.max(0.12, 0.42 * (1 - ratio * 0.32));
+                this.ctx.strokeStyle = this.colorWithAlpha(blast.rimColor, 1);
+                this.ctx.lineWidth = 1;
+                this.ctx.beginPath();
+                this.ctx.arc(blast.x, blast.y, outerRadius * 0.94, 0, Math.PI * 2);
+                this.ctx.stroke();
+                this.ctx.restore();
+                return;
+            }
+
+            this.ctx.globalAlpha = Math.max(0.08, 0.24 * (1 - ratio * 0.45));
+            this.ctx.fillStyle = this.colorWithAlpha(blast.glowColor, 1);
+            this.ctx.beginPath();
+            this.ctx.arc(blast.x, blast.y, outerRadius, 0, Math.PI * 2);
+            this.ctx.fill();
+
+            this.ctx.globalAlpha = Math.max(0.12, 0.36 * (1 - ratio * 0.35));
+            this.ctx.fillStyle = this.colorWithAlpha(blast.outerColor, 1);
+            this.ctx.beginPath();
+            this.ctx.arc(blast.x, blast.y, middleRadius, 0, Math.PI * 2);
+            this.ctx.fill();
+
+            this.ctx.globalAlpha = Math.max(0.16, 0.62 * (1 - ratio * 0.28));
+            this.ctx.fillStyle = this.colorWithAlpha(blast.coreColor, 1);
+            this.ctx.beginPath();
+            this.ctx.arc(blast.x, blast.y, coreRadius, 0, Math.PI * 2);
+            this.ctx.fill();
+
+            this.ctx.globalAlpha = Math.max(0.1, 0.28 * (1 - ratio * 0.55));
+            this.ctx.strokeStyle = this.colorWithAlpha(blast.rimColor, 1);
+            this.ctx.lineWidth = 1;
+            this.ctx.beginPath();
+            this.ctx.arc(blast.x, blast.y, outerRadius * 0.98, 0, Math.PI * 2);
+            this.ctx.stroke();
+            this.ctx.restore();
+        });
+    }
+
+    private updateGravityPulses() {
+        for (let index = this.gravityPulses.length - 1; index >= 0; index -= 1) {
+            const pulse = this.gravityPulses[index];
+            pulse.life -= 1;
+            pulse.radius = Math.min(pulse.maxRadius, pulse.radius + Math.max(1.2, pulse.maxRadius * 0.045));
+            pulse.rotation += 0.04;
+            if (pulse.life <= 0) {
+                this.gravityPulses.splice(index, 1);
+            }
+        }
+    }
+
+    private queueGravityPulse(x: number, y: number, radius: number, color: string) {
+        this.gravityPulses.push({
+            x,
+            y,
+            radius: 4,
+            maxRadius: Math.max(12, radius * 1.45),
+            life: 28,
+            maxLife: 28,
+            rotation: this.nextRandom() * Math.PI * 2,
+            coreColor: '#f3fbff',
+            glowColor: color,
+            lineColor: '#8be6ff'
+        });
+    }
+
+    private drawGravityPulses() {
+        this.gravityPulses.forEach((pulse) => {
+            const alpha = Math.max(0, pulse.life / pulse.maxLife);
+            const innerRadius = pulse.radius * 0.38;
+            const rimRadius = pulse.radius * 0.82;
+
+            this.ctx.save();
+            this.ctx.translate(pulse.x, pulse.y);
+            this.ctx.rotate(pulse.rotation);
+
+            this.ctx.globalAlpha = 0.14 * alpha;
+            this.ctx.fillStyle = this.colorWithAlpha(pulse.glowColor, 1);
+            this.ctx.beginPath();
+            this.ctx.arc(0, 0, pulse.radius, 0, Math.PI * 2);
+            this.ctx.fill();
+
+            this.ctx.globalAlpha = 0.18 * alpha;
+            this.ctx.fillStyle = '#08111d';
+            this.ctx.beginPath();
+            this.ctx.arc(0, 0, innerRadius, 0, Math.PI * 2);
+            this.ctx.fill();
+
+            this.ctx.globalAlpha = 0.52 * alpha;
+            this.ctx.strokeStyle = this.colorWithAlpha(pulse.lineColor, 1);
+            this.ctx.lineWidth = 1;
+            for (let index = 0; index < 6; index += 1) {
+                const angle = (Math.PI * 2 * index) / 6;
+                const inner = innerRadius + 2;
+                const outer = pulse.radius * (0.9 + (index % 2) * 0.06);
+                this.ctx.beginPath();
+                this.ctx.moveTo(Math.cos(angle) * inner, Math.sin(angle) * inner);
+                this.ctx.lineTo(Math.cos(angle) * outer, Math.sin(angle) * outer);
+                this.ctx.stroke();
+            }
+
+            this.ctx.globalAlpha = 0.42 * alpha;
+            this.ctx.strokeStyle = this.colorWithAlpha(pulse.coreColor, 1);
+            this.ctx.beginPath();
+            this.ctx.arc(0, 0, rimRadius, 0, Math.PI * 2);
+            this.ctx.stroke();
+            this.ctx.beginPath();
+            this.ctx.arc(0, 0, pulse.radius, 0, Math.PI * 2);
+            this.ctx.stroke();
+            this.ctx.restore();
+        });
+    }
+
+    private updateTechPulses() {
+        for (let index = this.techPulses.length - 1; index >= 0; index -= 1) {
+            const pulse = this.techPulses[index];
+            pulse.life -= 1;
+            pulse.size = Math.min(pulse.maxSize, pulse.size + Math.max(1.4, pulse.maxSize * 0.055));
+            pulse.rotation += 0.028;
+            if (pulse.life <= 0) {
+                this.techPulses.splice(index, 1);
+            }
+        }
+    }
+
+    private queueTechPulse(x: number, y: number, radius: number, primaryColor: string, secondaryColor: string) {
+        this.techPulses.push({
+            x,
+            y,
+            size: 6,
+            maxSize: Math.max(14, radius * 1.5),
+            life: 24,
+            maxLife: 24,
+            rotation: this.nextRandom() * Math.PI * 2,
+            primaryColor,
+            secondaryColor
+        });
+    }
+
+    private drawTechPulses() {
+        this.techPulses.forEach((pulse) => {
+            const alpha = Math.max(0, pulse.life / pulse.maxLife);
+            const outer = pulse.size;
+            const middle = pulse.size * 0.68;
+            const inner = pulse.size * 0.36;
+
+            this.ctx.save();
+            this.ctx.translate(pulse.x, pulse.y);
+            this.ctx.rotate(pulse.rotation);
+            this.ctx.globalAlpha = 0.58 * alpha;
+            this.ctx.strokeStyle = this.colorWithAlpha(pulse.primaryColor, 1);
+            this.ctx.lineWidth = 1;
+            this.ctx.strokeRect(-outer, -outer, outer * 2, outer * 2);
+            this.ctx.rotate(Math.PI / 4);
+            this.ctx.strokeRect(-middle, -middle, middle * 2, middle * 2);
+            this.ctx.rotate(-Math.PI / 4);
+
+            this.ctx.globalAlpha = 0.22 * alpha;
+            this.ctx.fillStyle = this.colorWithAlpha(pulse.secondaryColor, 1);
+            this.ctx.fillRect(-inner, -inner, inner * 2, inner * 2);
+
+            this.ctx.globalAlpha = 0.46 * alpha;
+            this.ctx.strokeStyle = this.colorWithAlpha('#e8fbff', 1);
+            this.ctx.beginPath();
+            this.ctx.moveTo(-outer * 1.05, 0);
+            this.ctx.lineTo(outer * 1.05, 0);
+            this.ctx.moveTo(0, -outer * 1.05);
+            this.ctx.lineTo(0, outer * 1.05);
+            this.ctx.stroke();
+            this.ctx.restore();
+        });
     }
 
     private drawSky() {
@@ -1119,6 +1663,8 @@ export class Game {
                 powerLabel: '-',
                 powerPercent: 0,
                 angleLabel: '-',
+                mirvSpread: 'normal',
+                canAdjustMirvSpread: false,
                 selectedWeaponIndex: 0,
                 canSelectWeapon: false,
                 weaponOptions: [],
@@ -1144,8 +1690,13 @@ export class Game {
                 ? '>'
                 : '<';
         const windText = `Wind ${windLevel}/10 ${windDirection}`;
+        const debugSuffix = this.settings.debugUnlimitedArsenal
+            ? ` | DBG stale ${this.stalemateCounter}/${this.stalemateLimit} | wind ${this.state.wind.toFixed(2)} | proj ${this.projectiles.length}+${this.pendingProjectiles.length}`
+            : '';
         const hintLabel = this.state.phase === 'game_over'
-            ? `${winner?.name ?? 'No one'} won the round. Open the debrief and shop to continue.`
+            ? this.roundEndReason === 'stalemate'
+                ? `Stalemate cap reached. ${winner?.name ?? 'No one'} gets the round on advantage.`
+                : `${winner?.name ?? 'No one'} won the round. Open the debrief and shop to continue.`
             : currentPlayer.isBot && this.isAuthoritative
                 ? `${currentPlayer.name} is calculating a firing solution.`
                 : this.canLocalControlCurrentTank()
@@ -1159,7 +1710,7 @@ export class Game {
             pilotLabel: `${currentPlayer.name} | HP ${currentPlayer.health}${currentPlayer.maxShield > 0 ? ` | SH ${currentPlayer.shield}` : ''}`,
             turnColor: currentPlayer.color,
             roundLabel: `Round ${this.roundNumber}/${this.settings.rounds}`,
-            campaignLabel: `Round ${this.roundNumber}/${this.settings.rounds} | ${this.settings.terrainCollapse ? 'Collapse on' : 'Collapse off'}`,
+            campaignLabel: `Round ${this.roundNumber}/${this.settings.rounds} | ${this.settings.terrainCollapse ? 'Collapse on' : 'Collapse off'}${debugSuffix}`, 
             shieldPercent: currentPlayer.maxShield > 0 ? currentPlayer.shield / currentPlayer.maxShield : 0,
             weaponLabel: `${weaponDefinition.name} | Ammo ${ammoLabel}`,
             healthPercent: currentPlayer.health / 100,
@@ -1167,6 +1718,8 @@ export class Game {
             powerLabel: `Charge ${Math.round(currentPlayer.power)} / ${currentMaxPower}`,
             powerPercent: currentPlayer.power / Math.max(1, currentMaxPower),
             angleLabel: `Angle ${angleDegrees} deg`,
+            mirvSpread: currentPlayer.mirvSpread,
+            canAdjustMirvSpread: this.canLocalControlCurrentTank() && weapon.type === 'command_mirv',
             selectedWeaponIndex: currentPlayer.selectedWeaponIndex,
             canSelectWeapon: this.canLocalControlCurrentTank(),
             weaponOptions: currentPlayer.weapons.flatMap((entry, index) => isCombatWeapon(entry.type) ? [{
@@ -1177,7 +1730,11 @@ export class Game {
             }] : []),
             windLabel: windText,
             hintLabel,
-            winnerLabel: this.state.phase === 'game_over' ? `${winner?.name ?? 'No one'} wins round ${this.roundNumber}` : '',
+            winnerLabel: this.state.phase === 'game_over'
+                ? this.roundEndReason === 'stalemate'
+                    ? `Stalemate cap reached | ${winner?.name ?? 'No one'} takes round ${this.roundNumber}`
+                    : `${winner?.name ?? 'No one'} wins round ${this.roundNumber}`
+                : '',
             scoreboard: this.snapshotScoreboard()
         });
     }
@@ -1246,6 +1803,7 @@ export class Game {
             playerId: tank.id,
             angle: tank.angle,
             power: tank.power,
+            mirvSpread: tank.mirvSpread,
             weaponIndex: tank.selectedWeaponIndex,
             turnNumber: this.state.turnNumber
         });
@@ -1312,7 +1870,7 @@ export class Game {
             });
         });
 
-        const baseChoice = best.score > 6 ? best : safest.score > Number.NEGATIVE_INFINITY ? safest : {
+        const baseChoice = best.score > Number.NEGATIVE_INFINITY ? best : safest.score > Number.NEGATIVE_INFINITY ? safest : {
             weaponIndex: tank.selectedWeaponIndex,
             angle: tank.angle,
             power: Math.min(maxPower, Math.max(36, tank.power)),
@@ -1323,8 +1881,13 @@ export class Game {
         const powerError = this.scaleBotValue(tank.botDifficulty, 30, 2);
         const attemptedAngle = normalizeAngle(chosen.angle + (this.nextRandom() * 2 - 1) * angleError);
         const attemptedPower = clamp(chosen.power + (this.nextRandom() * 2 - 1) * powerError, 6, maxPower);
-        const attemptedImpact = this.simulateBotImpact(tank, tank.weapons[chosen.weaponIndex]?.type ?? tank.currentWeapon.type, attemptedAngle, attemptedPower);
-        if (attemptedImpact && this.isBotImpactSafe(tank, tank.weapons[chosen.weaponIndex]?.type ?? tank.currentWeapon.type, attemptedImpact.x, attemptedImpact.y)) {
+        const attemptedWeaponType = tank.weapons[chosen.weaponIndex]?.type ?? tank.currentWeapon.type;
+        const attemptedImpact = this.simulateBotImpact(tank, attemptedWeaponType, attemptedAngle, attemptedPower);
+        const attemptedScore = attemptedImpact ? this.scoreBotImpact(tank, attemptedWeaponType, attemptedImpact.x, attemptedImpact.y, rankedTargets[0]?.id ?? '') : Number.NEGATIVE_INFINITY;
+        if (attemptedImpact
+            && this.isBotImpactSafe(tank, attemptedWeaponType, attemptedImpact.x, attemptedImpact.y)
+            && attemptedScore >= best.score - 18
+            && attemptedScore > -24) {
             chosen.angle = attemptedAngle;
             chosen.power = attemptedPower;
         }
@@ -1333,12 +1896,12 @@ export class Game {
 
     private simulateBotImpact(owner: Tank, weaponType: WeaponType, angle: number, power: number) {
         const start = owner.barrelTip;
-        const projectile = new Projectile(start.x, start.y, angle, power, owner.id, weaponType);
+        const projectile = new Projectile(start.x, start.y, angle, power, owner.id, weaponType, undefined, undefined, undefined, undefined, { mirvSpread: owner.mirvSpread });
         const activePlayers = this.players.filter((player) => player.alive);
         for (let tick = 0; tick < 480; tick += 1) {
             const impact = projectile.step(this.terrain, activePlayers, this.state.gravity, this.state.wind);
             if (impact) return impact;
-            if ((weaponType === 'merv' || weaponType === 'chaos_mirv' || weaponType === 'large_merv' || weaponType === 'large_chaos_mirv') && projectile.shouldSplit(this.terrain)) {
+            if ((weaponType === 'merv' || weaponType === 'merv_mk2' || weaponType === 'chaos_mirv' || weaponType === 'large_merv' || weaponType === 'large_chaos_mirv' || weaponType === 'command_mirv' || weaponType === 'supernova_mirv' || weaponType === 'apocalypse_mirv' || weaponType === 'solar_mirv') && projectile.shouldSplit(this.terrain)) {
                 return { x: Math.round(projectile.x), y: Math.round(projectile.y + 10) };
             }
         }
@@ -1351,9 +1914,20 @@ export class Game {
             + (weaponType === 'merv' || weaponType === 'chaos_mirv' || weaponType === 'large_merv' || weaponType === 'large_chaos_mirv' ? 8 : 0)
             + (weaponType === 'chaos' || weaponType === 'large_chaos' ? 6 : 0)
             + (weaponType === 'driller' || weaponType === 'large_driller' ? 10 : 0)
-            + (weaponType === 'autocannon' || weaponType === 'large_autocannon' ? 4 : 0);
+            + (weaponType === 'autocannon' || weaponType === 'large_autocannon' ? 4 : 0)
+            + (weaponType === 'grapeshot' ? 4 : 0)
+            + (weaponType === 'orbital_lance' || weaponType === 'deadfall' || weaponType === 'prism_lance' ? 12 : 0)
+            + (weaponType === 'aftershock' || weaponType === 'fault_line' ? 10 : 0)
+            + (weaponType === 'geyser' ? 6 : 0)
+            + (weaponType === 'storm_net' || weaponType === 'chaos_crown' || weaponType === 'eclipse_shell' ? 12 : 0)
+            + (weaponType === 'supernova_mirv' || weaponType === 'solar_mirv' ? 10 : 0)
+            + (weaponType === 'apocalypse_mirv' ? 14 : 0)
+            + (weaponType === 'void_bomb' || weaponType === 'singularity_echo' ? 16 : 0)
+            + (weaponType === 'aurora_helix' ? 10 : 0);
         const selfDistance = Math.hypot(owner.x - impactX, (owner.y - owner.bodyHeight / 2) - impactY);
         let total = selfDistance < effectiveRadius + 18 ? -220 : 0;
+        let nearestEnemyDistance = Number.POSITIVE_INFINITY;
+        let affectedEnemy = false;
         for (const tank of this.players) {
             if (!tank.alive) continue;
             const targetY = tank.y - tank.bodyHeight / 2;
@@ -1364,11 +1938,19 @@ export class Game {
                 if (distance < effectiveRadius + 10) total -= 140;
                 continue;
             }
+            nearestEnemyDistance = Math.min(nearestEnemyDistance, distance);
             if (estimatedDamage <= 0) continue;
+            affectedEnemy = true;
             const focusBonus = tank.id === focusTargetId ? 1.7 : 1.1;
             total += estimatedDamage * focusBonus;
             if (tank.health + tank.shield <= estimatedDamage) total += 42;
             if (tank.shield > 0) total += 4;
+        }
+        if (Number.isFinite(nearestEnemyDistance)) {
+            total -= nearestEnemyDistance * 0.18;
+        }
+        if (!affectedEnemy) {
+            total -= 110;
         }
         return total + effectiveRadius * 0.15;
     }
@@ -1379,7 +1961,11 @@ export class Game {
             + (weaponType === 'merv' || weaponType === 'chaos_mirv' || weaponType === 'large_merv' || weaponType === 'large_chaos_mirv' ? 8 : 0)
             + (weaponType === 'chaos' || weaponType === 'large_chaos' ? 6 : 0)
             + (weaponType === 'driller' || weaponType === 'large_driller' ? 10 : 0)
-            + (weaponType === 'autocannon' || weaponType === 'large_autocannon' ? 4 : 0);
+            + (weaponType === 'autocannon' || weaponType === 'large_autocannon' ? 4 : 0)
+            + (weaponType === 'grapeshot' ? 4 : 0)
+            + (weaponType === 'orbital_lance' || weaponType === 'deadfall' ? 12 : 0)
+            + (weaponType === 'aftershock' || weaponType === 'fault_line' ? 10 : 0)
+            + (weaponType === 'geyser' ? 6 : 0);
         const selfDistance = Math.hypot(owner.x - impactX, (owner.y - owner.bodyHeight / 2) - impactY);
         return selfDistance > effectiveRadius + 18;
     }
@@ -1408,6 +1994,7 @@ export class Game {
             playerId: currentPlayer.id,
             angle: currentPlayer.angle,
             power: currentPlayer.power,
+            mirvSpread: currentPlayer.mirvSpread,
             weaponIndex: currentPlayer.selectedWeaponIndex,
             turnNumber: this.state.turnNumber
         });
@@ -1564,23 +2151,29 @@ export class Game {
         };
     }
     private getWeaponShotCount(weaponType: WeaponType) {
-        return weaponType === 'autocannon' || weaponType === 'large_autocannon' ? 5 : 1;
+        if (weaponType === 'minigun') return 15;
+        if (weaponType === 'large_autocannon') return 7;
+        if (weaponType === 'autocannon') return 5;
+        if (weaponType === 'grapeshot') return 7;
+        return 1;
     }
 
     private getWeaponSpendValue(weaponType: WeaponType) {
-        return getWeaponShopPrice(weaponType, 1) ?? 24;
+        return getWeaponAmmoUnitPrice(weaponType, 1) ?? 24;
     }
     private setActiveProjectilesFromBurst(burst: Projectile[], weaponType: WeaponType) {
         this.pendingProjectiles = [];
-        if (weaponType !== 'autocannon' && weaponType !== 'large_autocannon') {
+        if (weaponType !== 'autocannon' && weaponType !== 'large_autocannon' && weaponType !== 'minigun') {
             this.projectiles = burst;
             return;
         }
 
+        const cadence = weaponType === 'minigun' ? 68 : weaponType === 'large_autocannon' ? 128 : 145;
         this.projectiles = burst.length ? [burst[0]] : [];
         this.pendingProjectiles = burst.slice(1).map((projectile, index) => ({
-            delayMs: (index + 1) * 110,
-            projectile
+            delayMs: (index + 1) * cadence,
+            projectile,
+            playFire: true
         }));
     }
 
@@ -1590,22 +2183,59 @@ export class Game {
         return -1;
     }
 
-    private createProjectileBurst(startX: number, startY: number, angle: number, power: number, ownerId: string, weaponType: WeaponType) {
-        if (weaponType !== 'autocannon' && weaponType !== 'large_autocannon') {
-            return [new Projectile(startX, startY, angle, power, ownerId, weaponType)];
+    private createProjectileBurst(startX: number, startY: number, angle: number, power: number, ownerId: string, weaponType: WeaponType, mirvSpread: MirvSpreadMode = 'normal') {
+        if (weaponType === 'grapeshot') {
+            const offsets = [-0.18, -0.12, -0.06, 0, 0.06, 0.12, 0.18];
+            return offsets.map((angleOffset, index) => {
+                const powerOffset = index === 3 ? 0 : (index < 3 ? -6 + index * 2 : -6 + (6 - index) * 2);
+                return new Projectile(
+                    startX,
+                    startY,
+                    angle + angleOffset,
+                    Math.max(6, power + powerOffset),
+                    ownerId,
+                    weaponType,
+                    undefined,
+                    undefined,
+                    undefined,
+                    undefined,
+                    { mirvSpread }
+                );
+            });
         }
 
-        return Array.from({ length: 5 }, (_, index) => {
-            const spread = this.getAutocannonSpread(ownerId, index, weaponType === 'large_autocannon' ? 4 : 3);
+        if (weaponType !== 'autocannon' && weaponType !== 'large_autocannon' && weaponType !== 'minigun') {
+            return [new Projectile(startX, startY, angle, power, ownerId, weaponType, undefined, undefined, undefined, undefined, { mirvSpread })];
+        }
+
+        const shotCount = weaponType === 'minigun' ? 15 : weaponType === 'large_autocannon' ? 7 : 5;
+        const maxOffset = weaponType === 'minigun' ? 2 : weaponType === 'large_autocannon' ? 4 : 3;
+        return Array.from({ length: shotCount }, (_, index) => {
+            const spread = this.getAutocannonSpread(ownerId, index, maxOffset);
             return new Projectile(
                 startX,
                 startY,
                 angle + spread.angleOffset,
                 Math.max(6, power + spread.powerOffset),
                 ownerId,
-                weaponType
+                weaponType,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                { mirvSpread }
             );
         });
+    }
+
+    public setMirvSpread(mode: MirvSpreadMode) {
+        if (!this.canLocalControlCurrentTank()) return;
+        const tank = this.currentPlayer;
+        if (!tank || tank.currentWeapon.type !== 'command_mirv') return;
+        tank.mirvSpread = mode;
+        this.turnInteractionStarted = true;
+        this.broadcastAimState();
+        this.emitHud();
     }
 
     private getAutocannonSpread(ownerId: string, shotIndex: number, maxOffset: number) {
@@ -1635,7 +2265,7 @@ export class Game {
         }
 
         if (weaponType === 'large_wall') {
-            this.terrain.raiseWall(primary.x, primary.y, 8, 54, '#8b7454');
+            this.terrain.raiseWall(primary.x, primary.y, 11, 72, '#8b7454');
             return;
         }
 
@@ -1660,6 +2290,459 @@ export class Game {
         tank.syncPowerCap(this.settings.powerRule);
     }
 
+    private pullTanksToward(centerX: number, centerY: number, radius: number, maxShift: number) {
+        for (const tank of this.players) {
+            if (!tank.alive) continue;
+            const tankCenterY = tank.y - tank.bodyHeight / 2;
+            const dx = centerX - tank.x;
+            const dy = centerY - tankCenterY;
+            const distance = Math.hypot(dx, dy);
+            if (distance <= 0 || distance > radius) continue;
+            const pull = (1 - distance / radius) * maxShift;
+            const nextX = tank.x + (dx / distance) * pull;
+            const nextY = tank.y + (dy / distance) * Math.min(1.5, pull * 0.35);
+            tank.x = clamp(nextX, 5, LOGICAL_WIDTH - 6);
+            tank.y = clamp(nextY, 0, LOGICAL_HEIGHT - 1);
+            if (this.tankIntersectsTerrain(tank)) {
+                tank.y -= 1;
+            }
+        }
+    }
+
+    private pushTanksAway(centerX: number, centerY: number, radius: number, maxShift: number) {
+        for (const tank of this.players) {
+            if (!tank.alive) continue;
+            const tankCenterY = tank.y - tank.bodyHeight / 2;
+            let dx = tank.x - centerX;
+            let dy = tankCenterY - centerY;
+            let distance = Math.hypot(dx, dy);
+            if (distance > radius) continue;
+            if (distance < 0.001) {
+                dx = tank.x <= centerX ? -1 : 1;
+                dy = -0.35;
+                distance = 1;
+            }
+            const push = (1 - distance / radius) * maxShift;
+            const nextX = tank.x + (dx / distance) * push;
+            const nextY = tank.y + (dy / distance) * Math.min(1.8, push * 0.3) - Math.max(0.2, push * 0.16);
+            tank.x = clamp(nextX, 5, LOGICAL_WIDTH - 6);
+            tank.y = clamp(nextY, 0, LOGICAL_HEIGHT - 1);
+            if (this.tankIntersectsTerrain(tank)) {
+                tank.y -= 1;
+            }
+        }
+    }
+
+    private queueImpactFollowups(ownerId: string, weaponType: WeaponType, impactX: number, impactY: number, impactDirX: number, impactDirY: number) {
+        const definition = WEAPON_DEFINITIONS[weaponType];
+        const groundedY = (rawX: number, fallbackY = impactY) => {
+            const x = Math.round(clamp(rawX, 2, LOGICAL_WIDTH - 3));
+            const rawSampleY = Math.round(clamp(fallbackY, 2, LOGICAL_HEIGHT - 3));
+            const y = this.terrain.isSolid(x, rawSampleY)
+                ? this.terrain.getSurfaceY(x) - 1
+                : rawSampleY;
+            return { x, y: Math.round(clamp(y, 2, LOGICAL_HEIGHT - 3)) };
+        };
+
+        if (weaponType === 'singularity_echo') {
+            this.queueGravityPulse(impactX, impactY, Math.max(22, definition.blastRadius + 10), '#b77bff');
+            this.pendingBursts.push(
+                {
+                    delayMs: 170,
+                    ownerId,
+                    weaponType,
+                    x: impactX,
+                    y: impactY,
+                    radius: Math.max(22, definition.blastRadius + 10),
+                    damage: 0,
+                    mode: 'echo_implode'
+                },
+                {
+                    delayMs: 520,
+                    ownerId,
+                    weaponType,
+                    x: impactX,
+                    y: impactY,
+                    radius: Math.max(14, definition.blastRadius + 6),
+                    damage: Math.max(16, definition.damage + 8),
+                    mode: 'burst'
+                }
+            );
+            return;
+        }
+
+        if (weaponType === 'prism_lance') {
+            const points = [
+                { dx: 0, dy: 0, delay: 120, bonus: 5 },
+                { dx: -14, dy: 0, delay: 200, bonus: 0 },
+                { dx: 14, dy: 0, delay: 280, bonus: 0 },
+                { dx: 0, dy: -14, delay: 360, bonus: 0 },
+                { dx: 0, dy: 14, delay: 440, bonus: 0 }
+            ];
+            points.forEach((point) => {
+                const x = Math.round(clamp(impactX + point.dx, 2, LOGICAL_WIDTH - 3));
+                const y = Math.round(clamp(this.terrain.isSolid(x, Math.round(clamp(impactY + point.dy, 2, LOGICAL_HEIGHT - 3))) ? this.terrain.getSurfaceY(x) - 1 : impactY + point.dy, 2, LOGICAL_HEIGHT - 3));
+                this.pendingBursts.push({
+                    delayMs: point.delay,
+                    ownerId,
+                    weaponType,
+                    x,
+                    y,
+                    radius: Math.max(6, definition.blastRadius + (point.bonus ? 2 : 0)),
+                    damage: definition.damage + point.bonus,
+                    mode: 'burst'
+                });
+            });
+            return;
+        }
+
+        if (weaponType === 'chaos_crown') {
+            const crownBursts = 6;
+            for (let index = 0; index < crownBursts; index += 1) {
+                const angle = (Math.PI * 2 * index) / crownBursts - Math.PI / 2;
+                this.pendingBursts.push({
+                    delayMs: 95 + index * 50,
+                    ownerId,
+                    weaponType,
+                    x: Math.round(clamp(impactX + Math.cos(angle) * 20, 2, LOGICAL_WIDTH - 3)),
+                    y: Math.round(clamp(impactY + Math.sin(angle) * 20, 2, LOGICAL_HEIGHT - 3)),
+                    radius: Math.max(6, definition.blastRadius - 1),
+                    damage: Math.max(10, definition.damage - 2),
+                    mode: 'burst'
+                });
+            }
+            return;
+        }
+
+        if (weaponType === 'eclipse_shell') {
+            this.queueGravityPulse(impactX, impactY, Math.max(18, definition.blastRadius + 8), '#c9b7ff');
+            const haloCount = 6;
+            for (let index = 0; index < haloCount; index += 1) {
+                const angle = (Math.PI * 2 * index) / haloCount;
+                this.pendingBursts.push({
+                    delayMs: 130 + index * 38,
+                    ownerId,
+                    weaponType,
+                    x: Math.round(clamp(impactX + Math.cos(angle) * 18, 2, LOGICAL_WIDTH - 3)),
+                    y: Math.round(clamp(impactY + Math.sin(angle) * 18, 2, LOGICAL_HEIGHT - 3)),
+                    radius: Math.max(6, definition.blastRadius - 2),
+                    damage: Math.max(10, definition.damage - 1),
+                    mode: 'burst'
+                });
+            }
+            return;
+        }
+
+        if (weaponType === 'aurora_helix') {
+            const directionLength = Math.hypot(impactDirX, impactDirY) || 1;
+            const dirX = impactDirX / directionLength;
+            const dirY = impactDirY / directionLength;
+            const normalX = -dirY;
+            const normalY = dirX;
+            for (let step = 1; step <= 6; step += 1) {
+                const side = step % 2 === 0 ? -1 : 1;
+                const distance = 10 + step * 9;
+                const lateral = side * (5 + step * 2.1);
+                this.pendingBursts.push({
+                    delayMs: 70 + step * 36,
+                    ownerId,
+                    weaponType,
+                    x: Math.round(clamp(impactX + dirX * distance + normalX * lateral, 2, LOGICAL_WIDTH - 3)),
+                    y: Math.round(clamp(impactY + dirY * distance + normalY * lateral, 2, LOGICAL_HEIGHT - 3)),
+                    radius: Math.max(6, definition.blastRadius - Math.floor(step / 3)),
+                    damage: Math.max(10, definition.damage - Math.floor(step / 2)),
+                    mode: 'burst'
+                });
+            }
+            return;
+        }
+
+        if (weaponType === 'storm_net') {
+            this.queueGravityPulse(impactX, impactY, Math.max(22, definition.blastRadius + 12), '#7feaff');
+            const offsets = [
+                { dx: -18, dy: -14 },
+                { dx: 18, dy: -14 },
+                { dx: 0, dy: 0 },
+                { dx: -18, dy: 14 },
+                { dx: 18, dy: 14 },
+                { dx: 0, dy: -20 },
+                { dx: 0, dy: 20 },
+                { dx: -24, dy: 0 },
+                { dx: 24, dy: 0 }
+            ];
+            offsets.forEach((offset, index) => {
+                const x = Math.round(clamp(impactX + offset.dx, 2, LOGICAL_WIDTH - 3));
+                const y = Math.round(clamp(this.terrain.isSolid(x, Math.round(clamp(impactY + offset.dy, 2, LOGICAL_HEIGHT - 3))) ? this.terrain.getSurfaceY(x) - 1 : impactY + offset.dy, 2, LOGICAL_HEIGHT - 3));
+                this.pendingBursts.push({
+                    delayMs: 80 + index * 32,
+                    ownerId,
+                    weaponType,
+                    x,
+                    y,
+                    radius: Math.max(5, definition.blastRadius),
+                    damage: Math.max(8, definition.damage - (index === 2 ? 0 : 1)),
+                    mode: 'burst'
+                });
+            });
+            return;
+        }
+
+        if (weaponType === 'echo_shell') {
+            this.queueGravityPulse(impactX, impactY, Math.max(18, definition.blastRadius + 6), '#86d9ff');
+            this.pendingBursts.push(
+                {
+                    delayMs: 150,
+                    ownerId,
+                    weaponType,
+                    x: impactX,
+                    y: impactY,
+                    radius: Math.max(18, definition.blastRadius + 8),
+                    damage: 0,
+                    mode: 'echo_implode'
+                },
+                {
+                    delayMs: 430,
+                    ownerId,
+                    weaponType,
+                    x: impactX,
+                    y: impactY,
+                    radius: Math.max(8, definition.blastRadius + 1),
+                    damage: Math.max(12, definition.damage + 4),
+                    mode: 'echo_blast'
+                }
+            );
+            return;
+        }
+
+        if (weaponType === 'orbital_lance') {
+            this.queueGravityPulse(impactX, impactY, Math.max(10, definition.blastRadius - 2), '#bfefff');
+            [-6, 0, 6].forEach((offset, index) => {
+                const point = groundedY(impactX + offset, this.terrain.getSurfaceY(impactX + offset) - 1);
+                this.pendingBursts.push({
+                    delayMs: 150 + index * 90,
+                    ownerId,
+                    weaponType,
+                    x: point.x,
+                    y: point.y,
+                    radius: Math.max(7, definition.blastRadius - 2 + (index === 1 ? 2 : 0)),
+                    damage: definition.damage + (index === 1 ? 6 : 0),
+                    mode: 'burst'
+                });
+            });
+            return;
+        }
+
+        if (weaponType === 'arc_mine') {
+            this.queueGravityPulse(impactX, impactY, Math.max(8, definition.blastRadius - 4), '#ffdcb8');
+            this.pendingBursts.push({
+                delayMs: 650,
+                ownerId,
+                weaponType,
+                x: impactX,
+                y: impactY,
+                radius: definition.blastRadius,
+                damage: definition.damage,
+                mode: 'burst'
+            });
+            return;
+        }
+
+        if (weaponType === 'aftershock') {
+            for (let step = 1; step <= 3; step += 1) {
+                [-1, 1].forEach((direction, sideIndex) => {
+                    const point = groundedY(impactX + direction * step * 13, impactY + step * 2);
+                    this.pendingBursts.push({
+                        delayMs: 70 + step * 55 + sideIndex * 14,
+                        ownerId,
+                        weaponType,
+                        x: point.x,
+                        y: point.y,
+                        radius: Math.max(5, definition.blastRadius - Math.floor(step / 2)),
+                        damage: Math.max(8, definition.damage - step * 2),
+                        mode: 'burst'
+                    });
+                });
+            }
+            return;
+        }
+
+        if (weaponType === 'deadfall') {
+            [-18, -8, 0, 8, 18].forEach((offset, index) => {
+                const point = groundedY(impactX + offset, this.terrain.getSurfaceY(impactX + offset) - 1);
+                this.pendingBursts.push({
+                    delayMs: 120 + index * 70,
+                    ownerId,
+                    weaponType,
+                    x: point.x,
+                    y: point.y,
+                    radius: Math.max(5, definition.blastRadius - (index === 2 ? -1 : 0)),
+                    damage: Math.max(9, definition.damage - Math.abs(index - 2)),
+                    mode: 'burst'
+                });
+            });
+            return;
+        }
+
+        if (weaponType === 'helix_shell') {
+            const directionLength = Math.hypot(impactDirX, impactDirY) || 1;
+            const dirX = impactDirX / directionLength;
+            const dirY = impactDirY / directionLength;
+            const normalX = -dirY;
+            const normalY = dirX;
+            for (let step = 1; step <= 6; step += 1) {
+                const side = step % 2 === 0 ? -1 : 1;
+                const distance = 8 + step * 8;
+                const lateral = side * (4 + step * 1.8);
+                const point = groundedY(impactX + dirX * distance + normalX * lateral, impactY + dirY * distance + normalY * lateral);
+                this.pendingBursts.push({
+                    delayMs: 70 + step * 38,
+                    ownerId,
+                    weaponType,
+                    x: point.x,
+                    y: point.y,
+                    radius: Math.max(4, definition.blastRadius - Math.floor(step / 3)),
+                    damage: Math.max(8, definition.damage - Math.floor(step / 2)),
+                    mode: 'burst'
+                });
+            }
+            return;
+        }
+
+        if (weaponType === 'volt_net') {
+            this.queueGravityPulse(impactX, impactY, Math.max(24, definition.blastRadius + 14), '#8feeff');
+            this.queueTechPulse(impactX, impactY, Math.max(18, definition.blastRadius + 10), '#f6ffff', '#74f2ff');
+            const offsets = [
+                { dx: -18, dy: -14 },
+                { dx: 18, dy: -14 },
+                { dx: -18, dy: 14 },
+                { dx: 18, dy: 14 },
+                { dx: 0, dy: 0 }
+            ];
+            offsets.forEach((offset, index) => {
+                const point = groundedY(impactX + offset.dx, impactY + offset.dy);
+                this.pendingBursts.push({
+                    delayMs: 75 + index * 42,
+                    ownerId,
+                    weaponType,
+                    x: point.x,
+                    y: point.y,
+                    radius: Math.max(5, definition.blastRadius),
+                    damage: Math.max(9, definition.damage - (index === 4 ? 0 : 1)),
+                    mode: 'burst'
+                });
+            });
+            return;
+        }
+
+        if (weaponType === 'shrapnel_cone') {
+            const directionLength = Math.hypot(impactDirX, impactDirY) || 1;
+            const dirX = impactDirX / directionLength;
+            const dirY = impactDirY / directionLength;
+            for (let step = 1; step <= 6; step += 1) {
+                const distance = step * 7;
+                const point = {
+                    x: Math.round(clamp(impactX + dirX * distance, 2, LOGICAL_WIDTH - 3)),
+                    y: Math.round(clamp(impactY + dirY * distance, 2, LOGICAL_HEIGHT - 3))
+                };
+                this.pendingBursts.push({
+                    delayMs: 55 + step * 48,
+                    ownerId,
+                    weaponType,
+                    x: point.x,
+                    y: point.y,
+                    radius: Math.max(4, definition.blastRadius - 1 + step),
+                    damage: Math.max(8, definition.damage - Math.floor(step / 2)),
+                    mode: 'burst'
+                });
+            }
+            return;
+        }
+
+        if (weaponType === 'flux_bomb') {
+            this.queueTechPulse(impactX, impactY, Math.max(16, definition.blastRadius), '#f2f6ff', '#9eb6ff');
+            this.pendingBursts.push({
+                delayMs: 260,
+                ownerId,
+                weaponType,
+                x: impactX,
+                y: impactY,
+                radius: definition.blastRadius + 6,
+                damage: Math.max(10, definition.damage - 10),
+                mode: 'burst'
+            });
+            return;
+        }
+
+        if (weaponType === 'blossom') {
+            return;
+        }
+
+        if (weaponType === 'crossfire') {
+            this.queueTechPulse(impactX, impactY, Math.max(14, definition.blastRadius + 6), '#fff8de', '#ffd166');
+            const rays = [
+                { dx: 1, dy: 0 },
+                { dx: -1, dy: 0 },
+                { dx: 0, dy: 1 },
+                { dx: 0, dy: -1 }
+            ];
+            rays.forEach((ray, rayIndex) => {
+                for (let step = 1; step <= 3; step += 1) {
+                    this.pendingBursts.push({
+                        delayMs: 55 + rayIndex * 18 + step * 42,
+                        ownerId,
+                        weaponType,
+                        x: Math.round(clamp(impactX + ray.dx * step * 13, 2, LOGICAL_WIDTH - 3)),
+                        y: Math.round(clamp(impactY + ray.dy * step * 13, 2, LOGICAL_HEIGHT - 3)),
+                        radius: Math.max(4, definition.blastRadius - Math.floor(step / 2)),
+                        damage: Math.max(9, definition.damage - step),
+                        mode: 'burst'
+                    });
+                }
+            });
+            return;
+        }
+    }
+
+    private resolveDelayedBurst(pending: PendingBurst) {
+        if (pending.mode === 'echo_implode') {
+            this.queueGravityPulse(pending.x, pending.y, pending.radius, '#86d9ff');
+            this.pullTanksToward(pending.x, pending.y, pending.radius + 14, Math.max(16, pending.radius * 0.26));
+            this.audio.playExplosion(Math.max(8, Math.round(pending.radius * 0.45)), 'gravity_well');
+            this.screenShake = Math.max(this.screenShake, pending.radius / 9);
+            this.finalizeDelayedResolutionIfIdle();
+            return;
+        }
+
+        if (this.usesProgressiveBlastEffect(pending.weaponType)) {
+            this.queueProgressiveBlast(pending.x, pending.y, pending.radius, pending.weaponType);
+        } else {
+            this.terrain.carveCircle(pending.x, pending.y, pending.radius);
+        }
+
+        const damageEvents = this.damagePlayers(pending.ownerId, pending.x, pending.y, pending.radius, pending.damage);
+        if (damageEvents.some((event) => event.amount > 0)) this.turnDamageDealt = true;
+        if (pending.weaponType === 'blast_bomb' || pending.weaponType === 'large_blast_bomb') {
+            this.pushTanksAway(pending.x, pending.y, pending.radius + 90, pending.weaponType === 'large_blast_bomb' ? 82 : 62);
+        }
+        this.spawnExplosion(pending.x, pending.y, pending.weaponType);
+        this.spawnDamagePopups(damageEvents);
+        this.spawnKillDebrisFromEvents(damageEvents);
+        if (!this.isSilentImpactWeapon(pending.weaponType)) {
+            this.audio.playExplosion(Math.max(1, pending.radius), pending.weaponType);
+            this.screenShake = Math.max(this.screenShake, pending.radius / 5);
+        }
+        this.finalizeDelayedResolutionIfIdle();
+    }
+
+    private finalizeDelayedResolutionIfIdle() {
+        const hasRemaining = this.projectiles.length > 0 || this.pendingProjectiles.length > 0 || this.pendingBursts.length > 0;
+        if (!hasRemaining && this.state.phase === 'projectile') {
+            this.awaitingShotResult = false;
+            this.resolveTimer = 0.85;
+            this.state.phase = 'settling';
+        }
+    }
+
     private applyWeaponImpact(ownerId: string, weaponType: WeaponType, bursts: Array<{ x: number; y: number; radius: number; damage: number }>) {
         if (this.isUtilityImpactWeapon(weaponType)) {
             this.applyUtilityImpact(ownerId, weaponType, bursts);
@@ -1667,14 +2750,25 @@ export class Game {
         }
 
         const damageEvents: DamageEvent[] = [];
+        const empDrain = weaponType === 'large_needle' ? 999 : weaponType === 'emp_shell' ? 75 : weaponType === 'emp_bomb' || weaponType === 'emp_missile' ? 50 : 0;
+        const shieldedTargetsBeforeImpact = weaponType === 'leech'
+            ? this.players.some((tank) => tank.alive && tank.id !== ownerId && tank.shield > 0 && bursts.some((burst) => Math.hypot(tank.x - burst.x, (tank.y - tank.bodyHeight / 2) - burst.y) <= burst.radius + 10))
+            : false;
         bursts.forEach((burst) => {
-            this.terrain.carveCircle(burst.x, burst.y, burst.radius);
+            if (empDrain > 0) {
+                damageEvents.push(...this.drainShieldBurst(ownerId, burst.x, burst.y, burst.radius, empDrain));
+            }
+            if (this.usesProgressiveBlastEffect(weaponType)) {
+                this.queueProgressiveBlast(burst.x, burst.y, burst.radius, weaponType);
+            } else {
+                this.terrain.carveCircle(burst.x, burst.y, burst.radius);
+            }
             damageEvents.push(...this.damagePlayers(ownerId, burst.x, burst.y, burst.radius, burst.damage));
             this.spawnExplosion(burst.x, burst.y, weaponType);
         });
 
-        if (weaponType === 'leech') {
-            const leeched = Math.max(0, Math.round(damageEvents.filter((event) => event.targetId !== ownerId).reduce((sum, event) => sum + event.amount, 0) * 0.35));
+        if (weaponType === 'leech' && shieldedTargetsBeforeImpact) {
+            const leeched = Math.max(0, Math.round(damageEvents.filter((event) => event.targetId !== ownerId).reduce((sum, event) => sum + event.amount, 0) * 0.65));
             if (leeched > 0) {
                 const owner = this.players.find((entry) => entry.id === ownerId);
                 const restored = owner?.restoreShield(leeched) ?? 0;
@@ -1682,12 +2776,34 @@ export class Game {
                     this.damagePopups.push({
                         x: owner.x,
                         y: owner.y - owner.bodyHeight - 8,
-                        text: `+${restored} SH`,
+                        text: '+' + restored + ' SH',
                         color: '#62e7ff',
                         life: 40
                     });
                 }
             }
+        }
+
+        if (weaponType === 'blast_bomb' || weaponType === 'large_blast_bomb') {
+            this.pushTanksAway(bursts[0]?.x ?? 0, bursts[0]?.y ?? 0, (bursts[0]?.radius ?? 0) + 90, weaponType === 'large_blast_bomb' ? 82 : 62);
+        }
+
+        if (weaponType === 'bulwark_shell') {
+            this.terrain.raiseWall(bursts[0]?.x ?? 0, (bursts[0]?.y ?? 0) + 4, 5, 38, '#907455');
+        }
+
+        if (weaponType === 'gravity_well') {
+            this.pullTanksToward(bursts[0]?.x ?? 0, bursts[0]?.y ?? 0, 138, 34);
+        } else if (weaponType === 'magnet_shell') {
+            this.pullTanksToward(bursts[0]?.x ?? 0, bursts[0]?.y ?? 0, 116, 26);
+        } else if (weaponType === 'volt_net') {
+            this.pullTanksToward(bursts[0]?.x ?? 0, bursts[0]?.y ?? 0, 118, 18);
+        } else if (weaponType === 'storm_net') {
+            this.pullTanksToward(bursts[0]?.x ?? 0, bursts[0]?.y ?? 0, 136, 24);
+        } else if (weaponType === 'void_bomb') {
+            this.pullTanksToward(bursts[0]?.x ?? 0, bursts[0]?.y ?? 0, 200, 48);
+        } else if (weaponType === 'singularity_echo' || weaponType === 'eclipse_shell') {
+            this.pullTanksToward(bursts[0]?.x ?? 0, bursts[0]?.y ?? 0, 118, 20);
         }
 
         return damageEvents;
@@ -1700,15 +2816,7 @@ export class Game {
         }
 
         if (weaponType === 'blossom') {
-            return this.applyBurstPattern(impactX, impactY, [
-                { x: 0, y: 0, radius: 8, damage: 18 },
-                { x: 0, y: -14, radius: 7, damage: 16 },
-                { x: 12, y: -8, radius: 7, damage: 16 },
-                { x: 12, y: 8, radius: 7, damage: 16 },
-                { x: 0, y: 14, radius: 7, damage: 16 },
-                { x: -12, y: 8, radius: 7, damage: 16 },
-                { x: -12, y: -8, radius: 7, damage: 16 }
-            ]);
+            return [{ x: impactX, y: impactY, radius: Math.max(6, definition.blastRadius), damage: definition.damage + 2 }];
         }
 
         if (weaponType === 'sinker') {
@@ -1720,18 +2828,71 @@ export class Game {
             }));
         }
 
+        if (weaponType === 'geyser') {
+            return Array.from({ length: 6 }, (_, index) => ({
+                x: Math.round(clamp(impactX, 2, LOGICAL_WIDTH - 3)),
+                y: Math.round(clamp(impactY - index * 10, 2, LOGICAL_HEIGHT - 3)),
+                radius: Math.max(4, definition.blastRadius - Math.floor(index / 2)),
+                damage: Math.max(7, definition.damage - index)
+            }));
+        }
+
         if (weaponType === 'crossfire') {
-            return this.applyBurstPattern(impactX, impactY, [
-                { x: 0, y: 0, radius: 8, damage: 18 },
-                { x: 16, y: 0, radius: 7, damage: 15 },
-                { x: -16, y: 0, radius: 7, damage: 15 },
-                { x: 0, y: 16, radius: 7, damage: 15 },
-                { x: 0, y: -16, radius: 7, damage: 15 },
-                { x: 32, y: 0, radius: 6, damage: 12 },
-                { x: -32, y: 0, radius: 6, damage: 12 },
-                { x: 0, y: 32, radius: 6, damage: 12 },
-                { x: 0, y: -32, radius: 6, damage: 12 }
-            ]);
+            return [{ x: impactX, y: impactY, radius: Math.max(6, definition.blastRadius), damage: definition.damage + 1 }];
+        }
+
+        if (weaponType === 'seeder' || weaponType === 'nuclear_seeder') {
+            return [{ x: impactX, y: impactY, radius: Math.max(5, definition.blastRadius - 1), damage: definition.damage }];
+        }
+
+        if (weaponType === 'echo_shell' || weaponType === 'singularity_echo' || weaponType === 'orbital_lance' || weaponType === 'prism_lance' || weaponType === 'arc_mine' || weaponType === 'shrapnel_cone') {
+            return [];
+        }
+
+
+        if (weaponType === 'flux_bomb') {
+            return [
+                { x: impactX, y: impactY, radius: Math.max(7, definition.blastRadius - 6), damage: definition.damage + 8 }
+            ];
+        }
+
+        if (weaponType === 'eclipse_shell') {
+            return [{ x: impactX, y: impactY, radius: Math.max(9, definition.blastRadius - 5), damage: Math.max(12, definition.damage - 8) }];
+        }
+
+        if (weaponType === 'fault_line') {
+            const horizontalDir = Math.abs(impactDirX) < 0.18 ? 1 : Math.sign(impactDirX);
+            return Array.from({ length: 6 }, (_, index) => {
+                const x = Math.round(clamp(impactX + horizontalDir * index * 11, 2, LOGICAL_WIDTH - 3));
+                const y = Math.round(clamp(this.terrain.getSurfaceY(x) - 1, 2, LOGICAL_HEIGHT - 3));
+                return {
+                    x,
+                    y,
+                    radius: Math.max(4, definition.blastRadius - Math.floor(index / 2)),
+                    damage: Math.max(8, definition.damage - index)
+                };
+            });
+        }
+
+        if (weaponType === 'bunker_buster') {
+            const directionLength = Math.hypot(impactDirX, impactDirY) || 1;
+            const dirX = impactDirX / directionLength;
+            const dirY = impactDirY / directionLength;
+            return [
+                { x: impactX, y: impactY, radius: Math.max(8, definition.blastRadius - 4), damage: definition.damage },
+                {
+                    x: Math.round(clamp(impactX + dirX * 9, 2, LOGICAL_WIDTH - 3)),
+                    y: Math.round(clamp(impactY + dirY * 9, 2, LOGICAL_HEIGHT - 3)),
+                    radius: Math.max(6, definition.blastRadius - 6),
+                    damage: definition.damage + 10
+                },
+                {
+                    x: Math.round(clamp(impactX + dirX * 16, 2, LOGICAL_WIDTH - 3)),
+                    y: Math.round(clamp(impactY + dirY * 16, 2, LOGICAL_HEIGHT - 3)),
+                    radius: Math.max(5, definition.blastRadius - 8),
+                    damage: definition.damage + 4
+                }
+            ];
         }
 
         const isDriller = weaponType === 'driller' || weaponType === 'large_driller';
@@ -1757,18 +2918,14 @@ export class Game {
         return [{ x: impactX, y: impactY, radius: definition.blastRadius, damage: definition.damage }];
     }
 
-    private applyBurstPattern(impactX: number, impactY: number, pattern: Array<{ x: number; y: number; radius: number; damage: number }>) {
-        return pattern.map((burst) => ({
-            x: Math.round(clamp(impactX + burst.x, 2, LOGICAL_WIDTH - 3)),
-            y: Math.round(clamp(impactY + burst.y, 2, LOGICAL_HEIGHT - 3)),
-            radius: burst.radius,
-            damage: burst.damage
-        }));
-    }
-
     private noise(seed: number) {
         const value = Math.sin(seed * 12.9898) * 43758.5453;
         return value - Math.floor(value);
+    }
+
+    private usesProgressiveBlastEffect(weaponType: WeaponType) {
+        const style = getWeaponExplosionStyle(weaponType);
+        return style === 'nuclear' || style === 'nova_blast' || style === 'solar' || style === 'void';
     }
 
     private nextChaosAngle(impactX: number, impactY: number, ownerId: string, depth: number) {
@@ -1794,6 +2951,11 @@ export class Game {
         return `rgba(${(bigint >> 16) & 255}, ${(bigint >> 8) & 255}, ${bigint & 255}, ${alpha})`;
     }
 }
+
+
+
+
+
 
 
 

@@ -1,13 +1,16 @@
 export type LoadoutId = 'balanced' | 'siege' | 'duelist';
 
 export type BotDifficulty = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10;
+export type MirvSpreadMode = 'narrow' | 'normal' | 'wide';
 
 export type WeaponType =
     | 'cannon'
     | 'mortar'
     | 'needle'
     | 'nova'
+    | 'omega_blast'
     | 'merv'
+    | 'merv_mk2'
     | 'chaos'
     | 'chaos_mirv'
     | 'driller'
@@ -17,12 +20,31 @@ export type WeaponType =
     | 'large_wall'
     | 'bunker_buster'
     | 'homing_missile'
+    | 'missile_mk2'
+    | 'missile_mk3'
+    | 'nuclear_missile_mk1'
+    | 'nuclear_missile_mk2'
+    | 'nuclear_missile_mk3'
     | 'bridge'
     | 'relocator'
     | 'leech'
     | 'blossom'
     | 'sinker'
     | 'crossfire'
+    | 'roller'
+    | 'flux_bomb'
+    | 'command_mirv'
+    | 'seeder'
+    | 'nuclear_seeder'
+    | 'echo_shell'
+    | 'shrapnel_cone'
+    | 'emp_bomb'
+    | 'emp_missile'
+    | 'emp_shell'
+    | 'minigun'
+    | 'phase_round'
+    | 'gravity_well'
+    | 'magnet_shell'
     | 'large_cannon'
     | 'large_mortar'
     | 'large_needle'
@@ -33,16 +55,33 @@ export type WeaponType =
     | 'large_driller'
     | 'large_blast_bomb'
     | 'large_autocannon'
+    | 'grapeshot'
+    | 'orbital_lance'
+    | 'aftershock'
+    | 'bulwark_shell'
+    | 'deadfall'
+    | 'helix_shell'
+    | 'arc_mine'
+    | 'volt_net'
+    | 'geyser'
+    | 'fault_line'
+    | 'supernova_mirv'
+    | 'apocalypse_mirv'
+    | 'solar_mirv'
+    | 'void_bomb'
+    | 'singularity_echo'
+    | 'prism_lance'
+    | 'chaos_crown'
+    | 'eclipse_shell'
+    | 'aurora_helix'
+    | 'storm_net'
     | 'shield_small'
     | 'shield_medium'
     | 'shield_large';
 
 export type WindMode = 'variable' | 'constant' | 'disabled';
-
 export type PowerRule = 'static' | 'health_linked';
-
 export type RoundOrderMode = 'player_number' | 'random' | 'winning_order' | 'reverse_winning_order';
-
 export type TerrainTheme = 'rolling' | 'flats' | 'hills' | 'mountains' | 'highlands' | 'divide' | 'caldera' | 'spires' | 'badlands' | 'trench';
 
 export interface ScoringSettings {
@@ -62,6 +101,7 @@ export interface MatchSettings {
     terrainThemes: TerrainTheme[];
     terrainCollapse: boolean;
     shieldVisibility: boolean;
+    debugUnlimitedArsenal: boolean;
     powerRule: PowerRule;
     rounds: number;
     scoring: ScoringSettings;
@@ -92,6 +132,7 @@ export interface PlayerSetup {
     loadout: LoadoutId;
     weapons?: WeaponState[];
     shield?: number;
+    mirvSpread?: MirvSpreadMode;
     isBot?: boolean;
     botDifficulty?: BotDifficulty;
 }
@@ -105,6 +146,7 @@ export interface PlayerSnapshot {
     maxShield: number;
     angle: number;
     power: number;
+    mirvSpread: MirvSpreadMode;
     selectedWeaponIndex: number;
     weapons: WeaponState[];
 }
@@ -164,6 +206,7 @@ export type GameMessage =
         playerId: string;
         angle: number;
         power: number;
+        mirvSpread: MirvSpreadMode;
         weaponIndex: number;
         turnNumber: number;
     }
@@ -172,6 +215,7 @@ export type GameMessage =
         playerId: string;
         angle: number;
         power: number;
+        mirvSpread: MirvSpreadMode;
         weaponIndex: number;
         turnNumber: number;
     }
@@ -184,6 +228,7 @@ export type GameMessage =
         weaponType: WeaponType;
         startX: number;
         startY: number;
+        mirvSpread?: MirvSpreadMode;
         turnNumber: number;
         consumeAmmo?: boolean;
         chaosDepth?: number;
@@ -211,6 +256,8 @@ export type GameMessage =
         roundNumber: number;
         seed: number;
         campaignComplete: boolean;
+        stalemateCounter: number;
+        roundEndReason?: 'normal' | 'stalemate';
     }
     | {
         kind: 'SHOP_UPDATE';
@@ -226,9 +273,5 @@ export type GameMessage =
         campaignComplete: boolean;
         players: ShopPlayerSnapshot[];
     };
-
-
-
-
 
 

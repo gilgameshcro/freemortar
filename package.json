@@ -8,7 +8,8 @@
     "dev:server": "node server/index.js",
     "build": "tsc && vite build",
     "preview": "vite preview",
-    "start": "node server/index.js"
+    "start": "node server/index.js",
+    "weapons:export": "node scripts/export-weapon-balance.mjs"
   },
   "devDependencies": {
     "typescript": "~5.7.2",

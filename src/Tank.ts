@@ -1,4 +1,4 @@
-import {
+﻿import {
     cloneWeapons,
     createWeaponsForLoadout,
     getMaxPowerForHealth,
@@ -9,7 +9,7 @@ import {
     normalizeAngle,
     STARTING_POWER
 } from './config';
-import type { BotDifficulty, LoadoutId, PlayerSetup, PlayerSnapshot, PowerRule, WeaponState } from './types';
+import type { BotDifficulty, LoadoutId, MirvSpreadMode, PlayerSetup, PlayerSnapshot, PowerRule, WeaponState } from './types';
 
 interface DrawOptions {
     showTurnPrompt: boolean;
@@ -32,6 +32,7 @@ export class Tank {
     public maxShield = 0;
     public angle = -Math.PI / 4;
     public power = STARTING_POWER;
+    public mirvSpread: MirvSpreadMode = 'normal';
     public selectedWeaponIndex = 0;
     public verticalVelocity = 0;
     public weapons: WeaponState[];
@@ -50,6 +51,7 @@ export class Tank {
         this.weapons = setup.weapons ? cloneWeapons(setup.weapons) : createWeaponsForLoadout(setup.loadout);
         this.shield = Math.max(0, Math.min(MAX_SHIELD, setup.shield ?? 0));
         this.maxShield = this.shield > 0 ? MAX_SHIELD : 0;
+        this.mirvSpread = setup.mirvSpread ?? 'normal';
     }
 
     public get alive() {
@@ -146,6 +148,7 @@ export class Tank {
             maxShield: this.maxShield,
             angle: this.angle,
             power: this.power,
+            mirvSpread: this.mirvSpread,
             selectedWeaponIndex: this.selectedWeaponIndex,
             weapons: cloneWeapons(this.weapons)
         };
@@ -159,6 +162,7 @@ export class Tank {
         this.maxShield = snapshot.maxShield;
         this.angle = snapshot.angle;
         this.power = snapshot.power;
+        this.mirvSpread = snapshot.mirvSpread;
         this.selectedWeaponIndex = snapshot.selectedWeaponIndex;
         this.weapons = cloneWeapons(snapshot.weapons);
         this.ensureWeaponAvailable();
@@ -237,6 +241,9 @@ export class Tank {
         this.maxShield = this.shield > 0 ? MAX_SHIELD : 0;
     }
 }
+
+
+
 
 
 

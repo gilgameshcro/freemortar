@@ -4,16 +4,22 @@ import {
     addWeaponAmmo,
     BOT_DIFFICULTY_PRESETS,
     COLOR_OPTIONS,
+    createDebugWeapons,
     createWeaponsForLoadout,
+    getWeaponBundleCount,
+    getWeaponCategory,
+    getWeaponEffectCount,
     getWeaponSellPrice,
     getWeaponShopPrice,
+    getWeaponSpecialEffects,
     LOADOUTS,
     LOGICAL_HEIGHT,
     LOGICAL_WIDTH,
     MAX_PLAYERS,
     removeWeaponAmmo,
     ROUND_SHOP_BASE_CREDITS,
-    WEAPON_DEFINITIONS
+    WEAPON_DEFINITIONS,
+    WEAPON_DISPLAY_ORDER
 } from './config';
 import { Game, type HudSnapshot, type RoundSummary } from './Game';
 import { Network } from './Network';
@@ -39,10 +45,11 @@ type LobbyMode = 'idle' | 'online-host' | 'online-client' | 'local';
 type IntermissionStage = 'hidden' | 'victory' | 'stats' | 'ceremony' | 'campaign' | 'shop';
 type LocalProfile = { name: string; color: string; loadout: LoadoutId };
 type ShopSelection = { playerId: string; weaponType: WeaponType; source: 'market' | 'stock' };
+type ShopCategoryFilter = 'all' | 'attack' | 'utility' | 'defense' | 'hybrid';
 
 type SetupLaunchMode = 'online-host' | 'local';
 
-const SHOP_WEAPON_ORDER: WeaponType[] = ['mortar', 'needle', 'nova', 'merv', 'chaos', 'chaos_mirv', 'driller', 'blast_bomb', 'autocannon', 'wall', 'large_wall', 'bunker_buster', 'homing_missile', 'relocator', 'leech', 'blossom', 'sinker', 'crossfire', 'large_cannon', 'large_mortar', 'large_needle', 'large_nova', 'large_merv', 'large_chaos', 'large_chaos_mirv', 'large_driller', 'large_blast_bomb', 'large_autocannon', 'shield_small', 'shield_medium', 'shield_large'];
+const SHOP_WEAPON_ORDER: WeaponType[] = WEAPON_DISPLAY_ORDER;
 const TERRAIN_OPTIONS: Array<{ value: TerrainTheme; name: string }> = [
     { value: 'rolling', name: 'Rolling' },
     { value: 'flats', name: 'Flats' },
@@ -105,6 +112,7 @@ const DEFAULT_SETTINGS: MatchSettings = {
     terrainThemes: TERRAIN_OPTIONS.map((option) => option.value),
     terrainCollapse: true,
     shieldVisibility: true,
+    debugUnlimitedArsenal: false,
     powerRule: 'health_linked',
     rounds: 1,
     scoring: { ...DEFAULT_SCORING },
@@ -217,6 +225,10 @@ app.innerHTML = `
                             <label class="toggle-row setting-toggle span-2" for="powerRuleToggle">
                                 <input id="powerRuleToggle" type="checkbox" checked />
                                 <span>HP impacts power</span>
+                            </label>
+                            <label class="toggle-row setting-toggle span-2" for="debugUnlimitedArsenal">
+                                <input id="debugUnlimitedArsenal" type="checkbox" />
+                                <span>Debug arsenal: all weapons, infinite ammo</span>
                             </label>
                             <label class="setting-field span-1" for="roundCount">
                                 <span class="field-label">Rounds</span>
@@ -354,6 +366,11 @@ app.innerHTML = `
                         <div class="power-bar"><span id="hudPowerFill"></span></div>
                         <p id="hudPowerLabel" class="hud-subline">Charge</p>
                         <p id="hudAngle" class="hud-subline">Angle</p>
+                        <div id="mirvSpreadControls" class="mirv-spread-controls is-hidden" role="group" aria-label="Command MIRV spread">
+                            <button id="btnMirvNarrow" class="mirv-spread-button" type="button">Narrow</button>
+                            <button id="btnMirvNormal" class="mirv-spread-button" type="button">Normal</button>
+                            <button id="btnMirvWide" class="mirv-spread-button" type="button">Wide</button>
+                        </div>
                     </div>
                 </section>
                 <section class="pixel-panel hud-card conditions-card compact-conditions-card">
@@ -408,6 +425,7 @@ const powerRuleToggle = mustElement<HTMLInputElement>('powerRuleToggle');
 const windModeSelect = mustElement<HTMLSelectElement>('windMode');
 const windMaxSelect = mustElement<HTMLSelectElement>('windMax');
 const shieldVisibilityInput = mustElement<HTMLInputElement>('shieldVisibility');
+const debugUnlimitedArsenalInput = mustElement<HTMLInputElement>('debugUnlimitedArsenal');
 const terrainThemeInputs = Array.from(document.querySelectorAll<HTMLInputElement>('input[name="terrainThemePool"]'));
 const roundCountInput = mustElement<HTMLInputElement>('roundCount');
 const roundOrderSelect = mustElement<HTMLSelectElement>('roundOrder');
@@ -448,6 +466,10 @@ const hudWeapon = mustElement<HTMLElement>('hudWeapon');
 const hudPowerFill = mustElement<HTMLElement>('hudPowerFill');
 const hudAngle = mustElement<HTMLElement>('hudAngle');
 const hudPowerLabel = mustElement<HTMLElement>('hudPowerLabel');
+const mirvSpreadControls = mustElement<HTMLElement>('mirvSpreadControls');
+const btnMirvNarrow = mustElement<HTMLButtonElement>('btnMirvNarrow');
+const btnMirvNormal = mustElement<HTMLButtonElement>('btnMirvNormal');
+const btnMirvWide = mustElement<HTMLButtonElement>('btnMirvWide');
 const hudWind = mustElement<HTMLElement>('hudWind');
 const hudWindArrow = mustElement<HTMLElement>('hudWindArrow');
 const hudWindFill = mustElement<HTMLElement>('hudWindFill');
@@ -479,6 +501,7 @@ let weaponSelectFocused = false;
 let currentHintLabel = 'Arrow left and right aim, arrow up and down change power, hold Ctrl for fine adjustment, and space fires.';
 let localShopCursor = 0;
 let shopSelection: ShopSelection | null = null;
+let shopCategoryFilter: ShopCategoryFilter = 'all';
 let shopScrollTop = { stock: 0, market: 0 };
 let pendingSetupMode: SetupLaunchMode | null = null;
 playerNameInput.value = 'Pilot One';
@@ -488,6 +511,7 @@ terrainThemeInputs.forEach((input) => { input.checked = DEFAULT_SETTINGS.terrain
 windModeSelect.value = DEFAULT_SETTINGS.windMode;
 windMaxSelect.value = `${DEFAULT_SETTINGS.maxWind}`;
 shieldVisibilityInput.checked = DEFAULT_SETTINGS.shieldVisibility;
+debugUnlimitedArsenalInput.checked = DEFAULT_SETTINGS.debugUnlimitedArsenal;
 roundCountInput.value = `${DEFAULT_SETTINGS.rounds}`;
 roundOrderSelect.value = DEFAULT_SETTINGS.roundOrder;
 weaponCostMultiplierInput.value = `${DEFAULT_SETTINGS.weaponCostMultiplier}`;
@@ -554,6 +578,9 @@ weaponSelect.addEventListener('change', () => {
     game?.selectWeapon(Number(weaponSelect.value));
     weaponSelect.blur();
 });
+btnMirvNarrow.addEventListener('click', (event) => { event.preventDefault(); event.stopPropagation(); game?.setMirvSpread('narrow'); });
+btnMirvNormal.addEventListener('click', (event) => { event.preventDefault(); event.stopPropagation(); game?.setMirvSpread('normal'); });
+btnMirvWide.addEventListener('click', (event) => { event.preventDefault(); event.stopPropagation(); game?.setMirvSpread('wide'); });
 volumeRangeMenu.addEventListener('input', syncVolumeFromControls);
 volumeRangeGame.addEventListener('input', syncVolumeFromControls);
 btnMuteMenu.addEventListener('click', async () => { await audio.unlock(); audio.setMuted(!audio.muted); updateAudioControls(); });
@@ -666,6 +693,7 @@ function readMatchSettingsForm(): MatchSettings {
         terrainThemes: terrainThemeInputs.filter((input) => input.checked).map((input) => input.value as TerrainTheme).length ? terrainThemeInputs.filter((input) => input.checked).map((input) => input.value as TerrainTheme) : [...DEFAULT_SETTINGS.terrainThemes],
         terrainCollapse: terrainCollapseInput.checked,
         shieldVisibility: shieldVisibilityInput.checked,
+        debugUnlimitedArsenal: debugUnlimitedArsenalInput.checked,
         powerRule: powerRuleToggle.checked ? 'health_linked' : 'static',
         rounds: clampSetting(Number(roundCountInput.value), 1, 99, DEFAULT_SETTINGS.rounds),
         roundOrder: roundOrderSelect.value as RoundOrderMode,
@@ -1048,7 +1076,7 @@ function buildMatchPayload(players: CampaignPlayer[], roundNumber: number, setti
     const orderedPlayers = orderPlayersForRound(players, settings, roundNumber, seed);
     return {
         seed,
-        players: orderedPlayers.map(toPlayerSetup),
+        players: orderedPlayers.map((player) => toPlayerSetup(player, settings)),
         currentPlayerIndex: 0,
         wind: buildInitialWind(seed, settings),
         turnNumber: 1,
@@ -1228,6 +1256,13 @@ function handleIntermissionClick(event: MouseEvent) {
         renderIntermission();
         return;
     }
+    if (action === 'set-shop-filter') {
+        const nextFilter = button.dataset.filter as ShopCategoryFilter | undefined;
+        if (!nextFilter) return;
+        shopCategoryFilter = nextFilter;
+        renderIntermission();
+        return;
+    }
     if (action === 'select-weapon') {
         const playerId = button.dataset.playerId;
         const weaponType = button.dataset.weapon as WeaponType | undefined;
@@ -1266,7 +1301,7 @@ function purchaseWeapon(playerId: string, weaponType: WeaponType) {
         return {
             ...player,
             credits: player.credits - price,
-            weapons: addWeaponAmmo(player.weapons, weaponType, 1)
+            weapons: addWeaponAmmo(player.weapons, weaponType, getWeaponBundleCount(weaponType))
         };
     });
     renderIntermission();
@@ -1379,13 +1414,21 @@ function getShopFocusPlayer() {
     return campaignPlayers.find((player) => player.id === localId) ?? null;
 }
 
+function getFilteredMarketTypes() {
+    return SHOP_WEAPON_ORDER.filter((type) => {
+        const price = getWeaponShopPrice(type, currentSettings.weaponCostMultiplier);
+        if (price === null) return false;
+        return shopCategoryFilter === 'all' || getWeaponCategory(type) === shopCategoryFilter;
+    });
+}
+
 function ensureShopSelection(player: CampaignPlayer | null) {
     if (!player) {
         shopSelection = null;
         return null;
     }
 
-    const marketTypes = SHOP_WEAPON_ORDER.filter((type) => getWeaponShopPrice(type, currentSettings.weaponCostMultiplier) !== null);
+    const marketTypes = getFilteredMarketTypes();
     const stockTypes = player.weapons.filter((weapon) => weapon.type !== 'cannon' && weapon.ammo > 0).map((weapon) => weapon.type);
     const selectionIsValid = shopSelection?.playerId === player.id && (
         (shopSelection.source === 'market' && marketTypes.includes(shopSelection.weaponType))
@@ -1410,7 +1453,7 @@ function getShopSelectionPool(player: CampaignPlayer, source: ShopSelection['sou
     if (source === 'stock') {
         return player.weapons.filter((weapon) => weapon.type !== 'cannon' && weapon.ammo > 0).map((weapon) => weapon.type);
     }
-    return SHOP_WEAPON_ORDER.filter((type) => getWeaponShopPrice(type, currentSettings.weaponCostMultiplier) !== null);
+    return getFilteredMarketTypes();
 }
 
 function cycleShopSelection(direction: 1 | -1) {
@@ -1455,9 +1498,9 @@ function handleShopKeydown(event: KeyboardEvent) {
 }
 
 function getBotShopRole(type: WeaponType) {
-    if (type === 'shield_small' || type === 'shield_medium' || type === 'shield_large') return 'defense';
-    if (type === 'wall' || type === 'large_wall' || type === 'relocator' || type === 'bunker_buster' || type === 'homing_missile') return 'utility';
-    return 'attack';
+    const category = getWeaponCategory(type);
+    if (category === 'hybrid') return Math.random() > 0.5 ? 'attack' : 'utility';
+    return category;
 }
 
 function queueBotShopTurnIfNeeded(player: CampaignPlayer | null) {
@@ -1500,7 +1543,7 @@ function runBotShopTurn(playerId: string) {
         credits -= price;
         spent += price;
         purchases += 1;
-        weapons = addWeaponAmmo(weapons, choice, 1);
+        weapons = addWeaponAmmo(weapons, choice, getWeaponBundleCount(choice));
         return true;
     };
 
@@ -1796,16 +1839,33 @@ function renderShopScreen() {
     const focusPlayer = getShopFocusPlayer();
     const selection = ensureShopSelection(focusPlayer);
     const selectedWeapon = selection ? WEAPON_DEFINITIONS[selection.weaponType] : null;
-    const ownedAmmo = selection && focusPlayer ? focusPlayer.weapons.find((weapon) => weapon.type === selection.weaponType)?.ammo ?? 0 : 0;
-    const buyPrice = selection ? getWeaponShopPrice(selection.weaponType, currentSettings.weaponCostMultiplier) : null;
-    const sellPrice = selection ? getWeaponSellPrice(selection.weaponType, currentSettings.weaponCostMultiplier) : null;
+    const selectedType = selectedWeapon?.type ?? null;
+    const ownedAmmo = selectedType && focusPlayer ? focusPlayer.weapons.find((weapon) => weapon.type === selectedType)?.ammo ?? 0 : 0;
+    const buyPrice = selectedType ? getWeaponShopPrice(selectedType, currentSettings.weaponCostMultiplier) : null;
+    const sellPrice = selectedType ? getWeaponSellPrice(selectedType, currentSettings.weaponCostMultiplier) : null;
+    const marketTypes = getFilteredMarketTypes();
+    const stockWeapons = focusPlayer
+        ? [...focusPlayer.weapons]
+            .filter((weapon) => weapon.ammo !== 0 || weapon.type === 'cannon')
+            .sort((left, right) => SHOP_WEAPON_ORDER.indexOf(left.type) - SHOP_WEAPON_ORDER.indexOf(right.type))
+        : [];
     const maxShopDamage = Math.max(1, ...SHOP_WEAPON_ORDER.map((type) => WEAPON_DEFINITIONS[type].damage));
     const maxShopBlast = Math.max(1, ...SHOP_WEAPON_ORDER.map((type) => WEAPON_DEFINITIONS[type].blastRadius));
     const damagePercent = selectedWeapon ? Math.round((selectedWeapon.damage / maxShopDamage) * 100) : 0;
     const blastPercent = selectedWeapon ? Math.round((selectedWeapon.blastRadius / maxShopBlast) * 100) : 0;
-    const featureTags = selectedWeapon ? getWeaponFeatureTags(selectedWeapon.type) : [];
+    const effectCount = selectedType ? getWeaponEffectCount(selectedType) : 1;
+    const bundleCount = selectedType ? getWeaponBundleCount(selectedType) : 1;
+    const featureTags = selectedType ? getWeaponFeatureTags(selectedType) : [];
+    const categoryLabel = selectedType ? getWeaponCategory(selectedType).replace(/^./, (value) => value.toUpperCase()) : '';
     const canBuy = Boolean(focusPlayer && selection?.source === 'market' && !focusPlayer.shopReady && buyPrice !== null && focusPlayer.credits >= buyPrice);
     const canSell = Boolean(focusPlayer && selection?.source === 'stock' && !focusPlayer.shopReady && sellPrice !== null && ownedAmmo > 0);
+    const tabs: Array<{ key: ShopCategoryFilter; label: string }> = [
+        { key: 'all', label: 'All' },
+        { key: 'attack', label: 'Attack' },
+        { key: 'utility', label: 'Utility' },
+        { key: 'defense', label: 'Defense' },
+        { key: 'hybrid', label: 'Hybrid' }
+    ];
 
     intermissionScreen.innerHTML = `
         <div class="intermission-card shop-card deluxe-shop-card tidy-shop-card">
@@ -1819,41 +1879,52 @@ function renderShopScreen() {
                         ${focusPlayer ? `<div class="shop-head-meta" style="--accent:${focusPlayer.color}"><span class="shop-focus-name">${escapeHtml(focusPlayer.name)}</span><span class="shop-credit-stack"><small>Credits</small><span class="shop-credits">${focusPlayer.credits} cr</span></span><span class="shop-shield-chip">Shield ${focusPlayer.shield}</span></div>` : ''}
                     </div>
                     ${focusPlayer ? `
-                        <div class="shop-columns tidy-shop-columns">
+                        <div class="shop-columns tidy-shop-columns categorized-shop-columns">
                             <section class="shop-column inventory-column tidy-inventory-column">
                                 <div class="column-head compact-column-head">
                                     <p class="eyebrow">Stock</p>
-                                    <span>${focusPlayer.shopReady ? 'Locked' : 'Select to inspect'}</span>
+                                    <span>${focusPlayer.shopReady ? 'Locked' : 'Owned ammo'}</span>
                                 </div>
                                 <div class="weapon-list tidy-weapon-list">
-                                    ${focusPlayer.weapons.filter((weapon) => weapon.ammo !== 0 || weapon.type === 'cannon').map((weapon) => `
-                                        <button class="weapon-chip tidy-weapon-chip ${selection?.source === 'stock' && selection.weaponType === weapon.type ? 'selected' : ''}" data-action="select-weapon" data-player-id="${focusPlayer.id}" data-source="stock" data-weapon="${weapon.type}" ${focusPlayer.shopReady ? 'disabled' : ''}>
-                                            <span class="shop-row-main"><span class="weapon-name">${WEAPON_DEFINITIONS[weapon.type].name}</span></span>
-                                            <strong class="shop-row-value">${weapon.ammo < 0 ? 'INF' : weapon.ammo}</strong>
-                                        </button>
-                                    `).join('')}
-                                </div>
-                            </section>
-                            <section class="shop-column market-column tidy-market-column">
-                                <div class="column-head compact-column-head">
-                                    <p class="eyebrow">Market</p>
-                                    <span>${focusPlayer.shopReady ? 'Locked' : 'Select to inspect'}</span>
-                                </div>
-                                <div class="store-list tidy-store-list">
-                                    ${SHOP_WEAPON_ORDER.map((type) => {
-                                        const price = getWeaponShopPrice(type, currentSettings.weaponCostMultiplier);
-                                        const locked = price === null;
-                                        const unaffordable = !locked && focusPlayer.credits < price;
+                                    ${stockWeapons.map((weapon) => {
                                         return `
-                                            <button class="store-item tidy-store-item ${selection?.source === 'market' && selection.weaponType === type ? 'selected' : ''} ${locked ? 'disabled' : ''} ${unaffordable ? 'unaffordable' : ''}" data-action="select-weapon" data-player-id="${focusPlayer.id}" data-source="market" data-weapon="${type}" ${focusPlayer.shopReady || locked ? 'disabled' : ''}>
-                                                <span class="shop-row-main"><span class="weapon-name">${WEAPON_DEFINITIONS[type].name}</span></span>
-                                                <strong class="shop-row-value">${price === null ? 'LOCK' : `${price} cr`}</strong>
+                                            <button class="weapon-chip tidy-weapon-chip ${selection?.source === 'stock' && selection.weaponType === weapon.type ? 'selected' : ''}" data-action="select-weapon" data-player-id="${focusPlayer.id}" data-source="stock" data-weapon="${weapon.type}" ${focusPlayer.shopReady ? 'disabled' : ''}>
+                                                <span class="shop-row-main">
+                                                    <span class="weapon-name">${WEAPON_DEFINITIONS[weapon.type].name}</span>
+                                                </span>
+                                                <strong class="shop-row-value">${weapon.ammo < 0 ? 'INF' : `${weapon.ammo} ammo`}</strong>
                                             </button>
                                         `;
                                     }).join('')}
                                 </div>
                             </section>
-                            <aside class="shop-detail-panel">
+                            <section class="shop-column market-column tidy-market-column">
+                                <div class="column-head compact-column-head market-head-with-tabs">
+                                    <div>
+                                        <p class="eyebrow">Market</p>
+                                        <span>${focusPlayer.shopReady ? 'Locked' : 'Bundle-aware pricing'}</span>
+                                    </div>
+                                    <div class="shop-tabs" role="tablist" aria-label="Weapon category filter">
+                                        ${tabs.map((tab) => `<button class="shop-tab ${shopCategoryFilter === tab.key ? 'active' : ''}" data-action="set-shop-filter" data-filter="${tab.key}" ${focusPlayer.shopReady ? 'disabled' : ''}>${tab.label}</button>`).join('')}
+                                    </div>
+                                </div>
+                                <div class="store-list tidy-store-list">
+                                    ${marketTypes.map((type) => {
+                                        const price = getWeaponShopPrice(type, currentSettings.weaponCostMultiplier);
+                                        const unaffordable = price !== null && focusPlayer.credits < price;
+                                        const bundle = getWeaponBundleCount(type);
+                                        return `
+                                            <button class="store-item tidy-store-item ${selection?.source === 'market' && selection.weaponType === type ? 'selected' : ''} ${unaffordable ? 'unaffordable' : ''}" data-action="select-weapon" data-player-id="${focusPlayer.id}" data-source="market" data-weapon="${type}" ${focusPlayer.shopReady ? 'disabled' : ''}>
+                                                <span class="shop-row-main">
+                                                    <span class="weapon-name">${WEAPON_DEFINITIONS[type].name}</span>
+                                                </span>
+                                                <strong class="shop-row-value"><span class="shop-row-inline-bundle">x${bundle}</span><span>${price === null ? 'LOCK' : `${price} cr`}</span></strong>
+                                            </button>
+                                        `;
+                                    }).join('') || '<div class="empty-market-state">No weapons in this category.</div>'}
+                                </div>
+                            </section>
+                            <aside class="shop-detail-panel upgraded-detail-panel">
                                 ${selectedWeapon ? `
                                     <div class="weapon-preview-art" data-weapon-type="${selectedWeapon.type}" style="--accent:${selectedWeapon.projectileColor}">
                                         <div class="weapon-preview-core"></div>
@@ -1865,16 +1936,21 @@ function renderShopScreen() {
                                         <p class="weapon-detail-flavor">${selectedWeapon.flavor}</p>
                                     </div>
                                     <div class="weapon-feature-pills">
+                                        <span class="weapon-feature-pill emphasized">${categoryLabel}</span>
+                                        <span class="weapon-feature-pill emphasized">x${bundleCount} ammo</span>
+                                        <span class="weapon-feature-pill emphasized">Payload x${effectCount}</span>
                                         ${featureTags.map((tag) => `<span class="weapon-feature-pill">${tag}</span>`).join('')}
                                     </div>
                                     <div class="weapon-meter-stack">
-                                        ${buildDetailMeter('Damage', damagePercent, selectedWeapon.projectileColor, `${selectedWeapon.damage}`)}
-                                        ${buildDetailMeter('Blast', blastPercent, selectedWeapon.projectileColor, `${selectedWeapon.blastRadius}`)}
+                                        ${buildDetailMeter('Damage / burst', damagePercent, selectedWeapon.projectileColor, `${selectedWeapon.damage}`)}
+                                        ${buildDetailMeter('Blast / burst', blastPercent, selectedWeapon.projectileColor, `${selectedWeapon.blastRadius}`)}
                                     </div>
-                                    <div class="weapon-detail-stats">
+                                    <div class="weapon-detail-stats enriched-weapon-detail-stats">
                                         <div><span>Stock</span><strong>${selection?.source === 'stock' ? (ownedAmmo < 0 ? 'INF' : ownedAmmo) : (focusPlayer.weapons.find((weapon) => weapon.type === selectedWeapon.type)?.ammo ?? 0)}</strong></div>
                                         <div><span>Buy</span><strong>${buyPrice ?? 'N/A'}</strong></div>
                                         <div><span>Sell</span><strong>${sellPrice ?? 'N/A'}</strong></div>
+                                        <div><span>Payload</span><strong>x${effectCount}</strong></div>
+                                        <div><span>Ammo</span><strong>x${bundleCount}</strong></div>
                                         <div><span>Source</span><strong>${selection?.source === 'market' ? 'Market' : 'Stock'}</strong></div>
                                     </div>
                                     <div class="shop-detail-actions">
@@ -1915,8 +1991,7 @@ function renderShopScreen() {
     `;
     restoreShopScrollState();
     queueBotShopTurnIfNeeded(focusPlayer);
-}
-function getRoundRankings(players: RoundSummary['players'], winnerId: string | null) {
+}function getRoundRankings(players: RoundSummary['players'], winnerId: string | null) {
     return [...players].sort((left, right) => {
         if (winnerId && left.id === winnerId) return -1;
         if (winnerId && right.id === winnerId) return 1;
@@ -2115,63 +2190,7 @@ function buildDetailMeter(label: string, percent: number, color: string, valueLa
 }
 
 function getWeaponFeatureTags(weaponType: WeaponType) {
-    switch (weaponType) {
-        case 'merv':
-        case 'large_merv':
-            return ['Split x3', 'Airburst'];
-        case 'chaos':
-            return ['Chain x3', 'Randomized'];
-        case 'large_chaos':
-            return ['Chain x5', 'Randomized'];
-        case 'chaos_mirv':
-            return ['Split x3', 'Chaos chain'];
-        case 'large_chaos_mirv':
-            return ['Split x3', 'Chaos x5'];
-        case 'driller':
-        case 'large_driller':
-            return ['Line strike', 'Forward bore'];
-        case 'blast_bomb':
-        case 'large_blast_bomb':
-            return ['Terrain clear', 'Wide crater'];
-        case 'autocannon':
-        case 'large_autocannon':
-            return ['Burst x5', 'Scatter'];
-        case 'wall':
-        case 'large_wall':
-            return ['Utility', 'Build terrain'];
-        case 'bunker_buster':
-            return ['Burrow', 'Surface pop'];
-        case 'homing_missile':
-            return ['Tracking', 'Late lock'];
-        case 'relocator':
-            return ['Teleport', 'Utility'];
-        case 'leech':
-            return ['Shield steal', 'Sustain'];
-        case 'blossom':
-            return ['Petal burst', 'Cluster'];
-        case 'sinker':
-            return ['Vertical bore', 'Terrain cut'];
-        case 'crossfire':
-            return ['Plus burst', 'Area denial'];
-        case 'shield_small':
-        case 'shield_medium':
-        case 'shield_large':
-            return ['Carry over', 'Defense'];
-        case 'needle':
-        case 'large_needle':
-            return ['Precision', 'Direct hit'];
-        case 'nova':
-        case 'large_nova':
-            return ['Heavy blast', 'Finisher'];
-        case 'mortar':
-        case 'large_mortar':
-            return ['Arc shot', 'Splash'];
-        case 'cannon':
-        case 'large_cannon':
-            return ['Baseline', 'Reliable'];
-        default:
-            return ['Standard'];
-    }
+    return getWeaponSpecialEffects(weaponType);
 }
 
 function leaveLobby() {
@@ -2230,6 +2249,7 @@ function syncMatchSettingsAvailability() {
     windModeSelect.disabled = disableSettings;
     windMaxSelect.disabled = disableSettings;
     shieldVisibilityInput.disabled = disableSettings;
+    debugUnlimitedArsenalInput.disabled = disableSettings;
     terrainThemeInputs.forEach((input) => { input.disabled = disableSettings; });
     roundCountInput.disabled = disableSettings;
     weaponCostMultiplierInput.disabled = disableSettings;
@@ -2266,11 +2286,11 @@ function updateGameHud(snapshot: HudSnapshot) {
     const windArrow = windMatch?.[2] ?? '0';
     hudWindArrow.textContent = windArrow;
     hudWindFill.style.width = `${Math.max(0, Math.min(100, windLevel * 10))}%`;
-    hudCampaign.textContent = snapshot.roundLabel;
+    hudCampaign.textContent = snapshot.campaignLabel;
     currentHintLabel = snapshot.hintLabel;
 
     syncWeaponSelect(snapshot);
-
+    syncMirvSpreadControls(snapshot);
 
     syncBoardTabs();
     renderBoard(snapshot);
@@ -2295,6 +2315,20 @@ function syncWeaponSelect(snapshot: HudSnapshot) {
     if (weaponSelect.disabled !== nextDisabled) {
         weaponSelect.disabled = nextDisabled;
     }
+}
+
+function syncMirvSpreadControls(snapshot: HudSnapshot) {
+    const show = snapshot.canAdjustMirvSpread;
+    mirvSpreadControls.classList.toggle('is-hidden', !show);
+    const controls = [
+        { element: btnMirvNarrow, mode: 'narrow' },
+        { element: btnMirvNormal, mode: 'normal' },
+        { element: btnMirvWide, mode: 'wide' }
+    ] as const;
+    controls.forEach(({ element, mode }) => {
+        element.disabled = !show;
+        element.classList.toggle('active', show && snapshot.mirvSpread === mode);
+    });
 }
 
 function renderBoard(snapshot: HudSnapshot) {
@@ -2338,6 +2372,13 @@ function resetHud() {
     hudPowerFill.style.width = '0%';
     hudPowerFill.style.background = '#ff7a59';
     hudAngle.textContent = 'Angle';
+    mirvSpreadControls.classList.add('is-hidden');
+    btnMirvNarrow.classList.remove('active');
+    btnMirvNormal.classList.remove('active');
+    btnMirvWide.classList.remove('active');
+    btnMirvNarrow.disabled = true;
+    btnMirvNormal.disabled = true;
+    btnMirvWide.disabled = true;
     hudWind.textContent = 'Wind 0/10 0';
     hudWindArrow.textContent = '0';
     hudWindFill.style.width = '0%';
@@ -2365,13 +2406,13 @@ function toCampaignPlayer(player: LobbyPlayer): CampaignPlayer {
         stats: createEmptyStats(player.id)
     };
 }
-function toPlayerSetup(player: CampaignPlayer): PlayerSetup {
+function toPlayerSetup(player: CampaignPlayer, settings: MatchSettings): PlayerSetup {
     return {
         id: player.id,
         name: player.name,
         color: player.color,
         loadout: player.loadout,
-        weapons: player.weapons.map((weapon) => ({ ...weapon })),
+        weapons: settings.debugUnlimitedArsenal ? createDebugWeapons() : player.weapons.map((weapon) => ({ ...weapon })),
         shield: player.shield,
         isBot: player.isBot,
         botDifficulty: player.botDifficulty
@@ -2420,6 +2461,15 @@ function escapeHtml(value: string) {
 function escapeAttribute(value: string) {
     return escapeHtml(value);
 }
+
+
+
+
+
+
+
+
+
 
 
 

@@ -3269,23 +3269,23 @@ canvas {
 }
 
 .shop-head-meta {
-    max-width: 156px;
-    gap: 1px;
+    max-width: 148px;
+    gap: 0;
 }
 
 .shop-focus-name {
-    font-size: 1.18rem;
-    line-height: 1;
+    font-size: 1.04rem;
+    line-height: 0.98;
     overflow-wrap: anywhere;
 }
 
 .shop-credit-stack {
     display: grid;
-    gap: 1px;
+    gap: 0;
 }
 
 .shop-credits {
-    font-size: 1.16rem;
+    font-size: 1rem;
 }
 
 .shop-shield-chip {
@@ -3307,9 +3307,9 @@ canvas {
 .tidy-store-item {
     display: grid;
     grid-template-columns: minmax(0, 1fr) auto;
-    gap: 8px;
+    gap: 7px;
     align-items: center;
-    padding: 7px 9px;
+    padding: 6px 8px;
 }
 
 .shop-row-main {
@@ -3320,15 +3320,35 @@ canvas {
 
 .weapon-name {
     display: block;
-    font-size: 0.76rem;
-    line-height: 1.08;
+    min-width: 0;
+    font-size: 0.73rem;
+    line-height: 1.04;
     white-space: normal;
     overflow-wrap: anywhere;
     word-break: break-word;
 }
 
+.shop-row-inline-bundle {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 1px 4px;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    background: rgba(12, 9, 18, 0.78);
+    color: rgba(255, 241, 216, 0.82);
+    font-family: Consolas, 'Lucida Console', 'Courier New', monospace;
+    font-size: 0.56rem;
+    line-height: 1;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    flex: 0 0 auto;
+}
+
 .shop-row-value {
-    font-size: 0.74rem;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.72rem;
     align-self: center;
     white-space: nowrap;
 }
@@ -3415,6 +3435,27 @@ canvas {
     height: 104px;
     border-radius: 22px;
     clip-path: polygon(50% 0%, 84% 16%, 100% 50%, 84% 84%, 50% 100%, 16% 84%, 0% 50%, 16% 16%);
+}
+
+.weapon-preview-art[data-weapon-type="omega_blast"] .weapon-preview-core {
+    width: 124px;
+    height: 124px;
+    border-radius: 50%;
+    background: radial-gradient(circle, color-mix(in srgb, var(--accent) 62%, #fff 38%) 0 22%, color-mix(in srgb, #ff8a4c 68%, var(--accent) 32%) 22% 48%, color-mix(in srgb, #5a2d18 78%, transparent 22%) 48% 100%);
+    box-shadow:
+        0 0 0 10px color-mix(in srgb, var(--accent) 18%, transparent),
+        0 0 0 22px color-mix(in srgb, #ffb36b 18%, transparent),
+        0 0 34px color-mix(in srgb, #ff9a5a 42%, transparent);
+}
+
+.weapon-preview-art[data-weapon-type="omega_blast"]::after {
+    content: '';
+    position: absolute;
+    width: 156px;
+    height: 156px;
+    border-radius: 50%;
+    border: 2px solid color-mix(in srgb, #ffd9a8 44%, transparent);
+    box-shadow: 0 0 24px color-mix(in srgb, #ffb36b 28%, transparent);
 }
 
 .weapon-preview-art[data-weapon-type="large_merv"] .weapon-preview-core,
@@ -3616,4 +3657,236 @@ canvas {
     line-height: 1.4;
 }
 
+
+
+.categorized-shop-columns {
+    grid-template-columns: minmax(0, 0.92fr) minmax(0, 1.05fr) 300px;
+}
+
+.market-head-with-tabs {
+    align-items: start;
+    gap: 10px;
+}
+
+.shop-tabs {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 6px;
+}
+
+.shop-tab {
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    background: rgba(10, 7, 15, 0.72);
+    color: var(--muted);
+    padding: 5px 8px;
+    font-family: Consolas, 'Lucida Console', 'Courier New', monospace;
+    font-size: 0.68rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+}
+
+.shop-tab.active {
+    color: #fff6df;
+    border-color: rgba(255, 222, 177, 0.34);
+    background: linear-gradient(180deg, rgba(255, 188, 120, 0.2), rgba(34, 19, 15, 0.72));
+}
+
+.shop-row-main {
+    display: grid;
+    gap: 4px;
+    align-content: center;
+    min-width: 0;
+}
+
+.shop-row-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+.shop-row-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 2px 6px;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    background: rgba(12, 9, 18, 0.78);
+    color: rgba(255, 241, 216, 0.82);
+    font-family: Consolas, 'Lucida Console', 'Courier New', monospace;
+    font-size: 0.6rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+}
+
+.shop-row-badge.category {
+    color: #8fe8ff;
+    border-color: rgba(143, 232, 255, 0.24);
+    background: rgba(13, 28, 34, 0.72);
+}
+
+.weapon-feature-pill.emphasized {
+    color: #fff6e6;
+    border-color: rgba(255, 210, 155, 0.24);
+    background: linear-gradient(180deg, rgba(255, 188, 120, 0.16), rgba(14, 9, 18, 0.78));
+}
+
+.enriched-weapon-detail-stats {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.empty-market-state {
+    padding: 12px;
+    border: 1px dashed rgba(255, 255, 255, 0.14);
+    color: var(--muted);
+    font-size: 0.82rem;
+}
+
+.upgraded-detail-panel {
+    align-self: stretch;
+}
+
+.weapon-preview-art[data-weapon-type="roller"] .weapon-preview-core {
+    width: 108px;
+    height: 34px;
+    border-radius: 999px;
+    box-shadow:
+        -22px 0 0 -10px color-mix(in srgb, var(--accent) 68%, #20130d 32%),
+        22px 0 0 -10px color-mix(in srgb, var(--accent) 76%, #fff 24%);
+}
+
+.weapon-preview-art[data-weapon-type="flux_bomb"] .weapon-preview-core {
+    width: 94px;
+    height: 94px;
+    border-radius: 28px;
+    clip-path: polygon(12% 22%, 50% 0%, 88% 22%, 100% 50%, 88% 78%, 50% 100%, 12% 78%, 0% 50%);
+}
+
+.weapon-preview-art[data-weapon-type="command_mirv"] .weapon-preview-core {
+    width: 114px;
+    height: 74px;
+    clip-path: polygon(0% 44%, 24% 16%, 38% 44%, 50% 0%, 62% 44%, 76% 16%, 100% 44%, 82% 100%, 50% 68%, 18% 100%);
+}
+
+.weapon-preview-art[data-weapon-type="seeder"] .weapon-preview-core {
+    width: 102px;
+    height: 22px;
+    border-radius: 999px;
+    box-shadow:
+        -28px 14px 0 -10px color-mix(in srgb, var(--accent) 68%, #fff 32%),
+        0 18px 0 -10px color-mix(in srgb, var(--accent) 62%, #000 18%),
+        28px 14px 0 -10px color-mix(in srgb, var(--accent) 74%, #fff 26%);
+}
+
+.weapon-preview-art[data-weapon-type="echo_shell"] .weapon-preview-core {
+    width: 98px;
+    height: 62px;
+    border-radius: 999px;
+    box-shadow:
+        0 0 0 8px color-mix(in srgb, var(--accent) 18%, transparent),
+        0 0 0 18px color-mix(in srgb, var(--accent) 9%, transparent);
+}
+
+.weapon-preview-art[data-weapon-type="shrapnel_cone"] .weapon-preview-core {
+    width: 112px;
+    height: 56px;
+    clip-path: polygon(0% 40%, 64% 0%, 100% 50%, 64% 100%);
+}
+
+.weapon-preview-art[data-weapon-type="phase_round"] .weapon-preview-core {
+    width: 42px;
+    height: 112px;
+    border-radius: 999px;
+    box-shadow:
+        0 0 0 10px color-mix(in srgb, var(--accent) 20%, transparent),
+        0 0 28px color-mix(in srgb, var(--accent) 36%, transparent);
+}
+
+.weapon-preview-art[data-weapon-type="gravity_well"] .weapon-preview-core {
+    width: 100px;
+    height: 100px;
+    border-radius: 50%;
+    box-shadow:
+        0 0 0 10px color-mix(in srgb, var(--accent) 15%, transparent),
+        inset 0 0 20px color-mix(in srgb, #05070d 76%, transparent);
+}
+
+.weapon-preview-art[data-weapon-type="magnet_shell"] .weapon-preview-core {
+    width: 98px;
+    height: 76px;
+    border-radius: 24px;
+    clip-path: polygon(12% 0%, 36% 0%, 36% 26%, 64% 26%, 64% 0%, 88% 0%, 88% 100%, 64% 100%, 64% 62%, 36% 62%, 36% 100%, 12% 100%);
+}
+
+@media (max-width: 1180px) {
+    .categorized-shop-columns {
+        grid-template-columns: 1fr;
+    }
+
+    .market-head-with-tabs {
+        flex-direction: column;
+    }
+
+    .shop-tabs {
+        justify-content: flex-start;
+    }
+
+    .enriched-weapon-detail-stats {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+}
+
+.mirv-spread-controls {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 4px;
+}
+
+.mirv-spread-button {
+    appearance: none;
+    border: 1px solid rgba(255, 211, 168, 0.26);
+    background: rgba(10, 7, 18, 0.82);
+    color: #ffd9ad;
+    font: inherit;
+    font-size: 0.56rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    padding: 4px 3px;
+    cursor: pointer;
+}
+
+.mirv-spread-button.active {
+    border-color: rgba(143, 232, 255, 0.44);
+    color: #9cecff;
+    background: rgba(18, 42, 53, 0.78);
+    box-shadow: 0 0 0 1px rgba(143, 232, 255, 0.12) inset;
+}
+
+.mirv-spread-button:disabled {
+    opacity: 0.45;
+    cursor: default;
+}
+
+.mirv-spread-controls {
+    min-height: 22px;
+    align-items: stretch;
+}
+
+.mirv-spread-controls.is-hidden {
+    visibility: hidden;
+    pointer-events: none;
+    opacity: 0;
+}
+
+.mirv-spread-button {
+    min-height: 20px;
+    font-size: 0.5rem;
+    padding: 3px 2px;
+    line-height: 1;
+    pointer-events: auto;
+}
+
+.charge-card {
+    min-height: 92px;
+}
 
