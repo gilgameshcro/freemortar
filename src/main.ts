@@ -1629,8 +1629,17 @@ function getBotShopRole(type: WeaponType) {
     return category;
 }
 
-function queueBotShopTurnIfNeeded(player: CampaignPlayer | null) {
-    if (network || !player?.isBot || player.shopReady) {
+function queueBotShopTurnIfNeeded(_player: CampaignPlayer | null) {
+    const botPlayer = campaignPlayers.find((entry) => {
+        if (!entry.isBot || entry.shopReady) return false;
+        if (!network) {
+            const localPlayer = getLocalShopPlayer();
+            return localPlayer?.id === entry.id;
+        }
+        return network.role === 'host';
+    }) ?? null;
+
+    if (!botPlayer) {
         if (botShopTimer !== null) {
             window.clearTimeout(botShopTimer);
             botShopTimer = null;
@@ -1640,7 +1649,7 @@ function queueBotShopTurnIfNeeded(player: CampaignPlayer | null) {
     if (botShopTimer !== null) return;
     botShopTimer = window.setTimeout(() => {
         botShopTimer = null;
-        runBotShopTurn(player.id);
+        runBotShopTurn(botPlayer.id);
     }, 520);
 }
 
@@ -1707,6 +1716,7 @@ function runBotShopTurn(playerId: string) {
     localShopCursor = nextIndex >= 0 ? nextIndex : Math.max(0, fallbackIndex);
     shopSelection = null;
     renderIntermission();
+    syncShopState(playerId);
     maybeLaunchNextRound();
 }
 function renderIntermission() {
@@ -2587,6 +2597,7 @@ function escapeHtml(value: string) {
 function escapeAttribute(value: string) {
     return escapeHtml(value);
 }
+
 
 
 

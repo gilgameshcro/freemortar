@@ -471,6 +471,12 @@ export class Game {
                 }
                 this.resolveShot(projectile.ownerId, projectile.weaponType, impact.x, impact.y, projectile.vx, projectile.vy);
             } else {
+                const speculativeTrace = projectile.history.map((point) => ({ x: point.x, y: point.y }));
+                const lastTracePoint = speculativeTrace[speculativeTrace.length - 1];
+                if (!lastTracePoint || Math.round(lastTracePoint.x) !== impact.x || Math.round(lastTracePoint.y) !== impact.y) {
+                    speculativeTrace.push({ x: impact.x, y: impact.y });
+                }
+                this.persistShotTrace(projectile.ownerId, speculativeTrace);
                 this.awaitingShotResult = this.projectiles.length > 0 || this.pendingProjectiles.length > 0;
             }
         }
@@ -3008,6 +3014,7 @@ export class Game {
         return `rgba(${(bigint >> 16) & 255}, ${(bigint >> 8) & 255}, ${bigint & 255}, ${alpha})`;
     }
 }
+
 
 
 
