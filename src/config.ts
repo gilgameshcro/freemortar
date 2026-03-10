@@ -2,6 +2,7 @@ import type { BotDifficulty, LoadoutId, PowerRule, WeaponState, WeaponType } fro
 import weaponBalance from './data/weapon-balance.json';
 
 export type WeaponCategory = 'attack' | 'utility' | 'defense' | 'hybrid';
+export type WeaponShopCategory = 'basic-attack' | 'anti-shield-attack' | 'control-attack' | 'homing-attack' | 'mass-attack' | 'utility' | 'retired';
 export type WeaponExplosionStyle = 'standard' | 'heavy' | 'precision' | 'chaos' | 'drill' | 'ember' | 'terrain' | 'shield' | 'tech' | 'gravity' | 'shrapnel' | 'roller' | 'nuclear' | 'nova_blast' | 'solar' | 'void' | 'prism';
 export type WeaponSoundStyle = 'cannon' | 'mortar' | 'needle' | 'heavy' | 'chaos' | 'drill' | 'burst' | 'terrain' | 'shield' | 'tech' | 'gravity' | 'roller' | 'omega';
 
@@ -62,6 +63,7 @@ export interface WeaponDefinition {
 
 interface ActiveWeaponBalanceEntry extends WeaponDefinition {
     category: WeaponCategory;
+    shopCategory: WeaponShopCategory;
     shopPrice: number | null;
     bundleCount: number;
     effectCount: number;
@@ -574,6 +576,10 @@ export const WEAPON_EXPLOSION_STYLES: Record<WeaponType, WeaponExplosionStyle> =
     cannon: 'standard', mortar: 'standard', needle: 'precision', nova: 'nova_blast', omega_blast: 'nuclear', merv: 'nuclear', merv_mk2: 'nuclear', chaos: 'chaos', chaos_mirv: 'chaos', driller: 'drill', blast_bomb: 'solar', autocannon: 'shrapnel', wall: 'terrain', large_wall: 'terrain', bunker_buster: 'drill', homing_missile: 'tech', missile_mk2: 'tech', missile_mk3: 'tech', nuclear_missile_mk1: 'nuclear', nuclear_missile_mk2: 'nuclear', nuclear_missile_mk3: 'nuclear', emp_missile: 'shield', bridge: 'terrain', relocator: 'tech', leech: 'tech', blossom: 'ember', sinker: 'drill', crossfire: 'prism', roller: 'roller', flux_bomb: 'tech', emp_bomb: 'shield', emp_shell: 'shield', minigun: 'shrapnel', command_mirv: 'nuclear', seeder: 'ember', nuclear_seeder: 'nuclear', echo_shell: 'gravity', shrapnel_cone: 'shrapnel', phase_round: 'tech', gravity_well: 'gravity', magnet_shell: 'gravity', large_cannon: 'heavy', large_mortar: 'heavy', large_needle: 'shield', large_nova: 'nova_blast', large_merv: 'nuclear', large_chaos: 'chaos', large_chaos_mirv: 'chaos', large_driller: 'drill', large_blast_bomb: 'solar', large_autocannon: 'shrapnel', grapeshot: 'shrapnel', orbital_lance: 'tech', aftershock: 'gravity', bulwark_shell: 'terrain', deadfall: 'heavy', helix_shell: 'ember', arc_mine: 'tech', volt_net: 'prism', geyser: 'drill', fault_line: 'drill', supernova_mirv: 'nova_blast', apocalypse_mirv: 'nuclear', solar_mirv: 'solar', void_bomb: 'void', singularity_echo: 'void', prism_lance: 'prism', chaos_crown: 'nova_blast', eclipse_shell: 'void', aurora_helix: 'nova_blast', storm_net: 'prism', shield_small: 'shield', shield_medium: 'shield', shield_large: 'shield'
 };
 
+export const WEAPON_SHOP_CATEGORIES = Object.fromEntries(
+    Object.entries(WEAPON_CATEGORIES).map(([type, category]) => [type, category === 'utility' ? 'utility' : 'basic-attack'])
+) as Record<WeaponType, WeaponShopCategory>;
+
 for (const entry of ACTIVE_WEAPON_BALANCE) {
     WEAPON_DEFINITIONS[entry.type] = {
         type: entry.type,
@@ -591,6 +597,7 @@ for (const entry of ACTIVE_WEAPON_BALANCE) {
     WEAPON_SHOP_BUNDLES[entry.type] = entry.bundleCount;
     WEAPON_EFFECT_COUNTS[entry.type] = entry.effectCount;
     WEAPON_CATEGORIES[entry.type] = entry.category;
+    WEAPON_SHOP_CATEGORIES[entry.type] = entry.shopCategory;
     WEAPON_SPECIAL_EFFECTS[entry.type] = [...entry.specialEffects];
     WEAPON_SOUND_STYLES[entry.type] = entry.soundStyle;
     WEAPON_EXPLOSION_STYLES[entry.type] = entry.explosionStyle;
@@ -648,6 +655,10 @@ export function getWeaponCategory(type: WeaponType) {
     return WEAPON_CATEGORIES[type];
 }
 
+export function getWeaponShopCategory(type: WeaponType) {
+    return WEAPON_SHOP_CATEGORIES[type];
+}
+
 export function getWeaponBundleCount(type: WeaponType) {
     return WEAPON_SHOP_BUNDLES[type] ?? 1;
 }
@@ -675,7 +686,7 @@ export function createWeaponsForLoadout(loadoutId: LoadoutId): WeaponState[] {
 export function createDebugWeapons(): WeaponState[] {
     const hiddenWeapons = new Set<WeaponType>(['bridge', 'blossom', 'orbital_lance', 'deadfall', 'arc_mine', 'geyser', 'fault_line', 'prism_lance', 'volt_net', 'shrapnel_cone']);
     return ACTIVE_WEAPON_TYPES
-        .filter((type) => isCombatWeapon(type) && !hiddenWeapons.has(type))
+        .filter((type) => isCombatWeapon(type) && !hiddenWeapons.has(type) && getWeaponShopCategory(type) !== 'retired')
         .map((type) => ({ type, ammo: -1 }));
 }
 

@@ -256,6 +256,8 @@ export class Game {
     private roundEndReason: 'normal' | 'stalemate' = 'normal';
     private botAimTimer: number | null = null;
     private botFireTimer: number | null = null;
+    private frameHandle: number | null = null;
+    private frameScheduler: 'raf' | 'timeout' | null = null;
 
     private readonly handleKeyDown = (event: KeyboardEvent) => {
         if (!this.canLocalControlCurrentTank()) return;
@@ -264,8 +266,9 @@ export class Game {
         this.turnInteractionStarted = true;
 
         let changedAim = false;
-        const angleStep = event.ctrlKey ? Math.PI / 180 : 0.045;
-        const powerStep = event.ctrlKey ? 1 : 4;
+        const fineAdjust = event.ctrlKey || event.metaKey || event.altKey || event.shiftKey;
+        const angleStep = fineAdjust ? Math.PI / 180 : 0.045;
+        const powerStep = fineAdjust ? 1 : 4;
         switch (event.key) {
             case 'ArrowLeft':
                 tank.setAim(tank.angle - angleStep, tank.power, this.settings.powerRule);
@@ -355,6 +358,7 @@ export class Game {
         this.lastFrame = performance.now();
         this.audio.startMusic();
         window.addEventListener('keydown', this.handleKeyDown);
+        document.addEventListener('visibilitychange', this.handleVisibilityChange);
 
         if (this.network) {
             this.network.onGameMessage = (message, senderId) => {
@@ -364,13 +368,15 @@ export class Game {
 
         this.emitHud();
         this.queueBotTurnIfNeeded();
-        requestAnimationFrame((timestamp) => this.frame(timestamp));
+        this.scheduleNextFrame();
     }
 
     public stop() {
         this.running = false;
         this.clearBotTimers();
+        this.cancelScheduledFrame();
         window.removeEventListener('keydown', this.handleKeyDown);
+        document.removeEventListener('visibilitychange', this.handleVisibilityChange);
     }
 
     public selectWeapon(index: number) {
@@ -388,7 +394,14 @@ export class Game {
         return this.players[this.state.currentPlayerIndex] ?? null;
     }
 
+    private readonly handleVisibilityChange = () => {
+        if (!this.running) return;
+        this.scheduleNextFrame();
+    };
+
     private frame(timestamp: number) {
+        this.frameHandle = null;
+        this.frameScheduler = null;
         if (!this.running) return;
         const delta = Math.min(50, timestamp - this.lastFrame);
         this.lastFrame = timestamp;
@@ -400,7 +413,30 @@ export class Game {
         }
 
         this.draw();
-        requestAnimationFrame((nextTimestamp) => this.frame(nextTimestamp));
+        this.scheduleNextFrame();
+    }
+
+    private scheduleNextFrame() {
+        if (!this.running) return;
+        this.cancelScheduledFrame();
+        if (document.hidden) {
+            this.frameScheduler = 'timeout';
+            this.frameHandle = window.setTimeout(() => this.frame(performance.now()), FIXED_STEP_MS);
+            return;
+        }
+        this.frameScheduler = 'raf';
+        this.frameHandle = requestAnimationFrame((nextTimestamp) => this.frame(nextTimestamp));
+    }
+
+    private cancelScheduledFrame() {
+        if (this.frameHandle === null) return;
+        if (this.frameScheduler === 'timeout') {
+            window.clearTimeout(this.frameHandle);
+        } else {
+            cancelAnimationFrame(this.frameHandle);
+        }
+        this.frameHandle = null;
+        this.frameScheduler = null;
     }
 
     private step() {
@@ -655,7 +691,11 @@ export class Game {
             player.consumeSelectedWeapon();
             burst = this.createProjectileBurst(message.startX, message.startY, message.angle, message.power, message.playerId, message.weaponType, message.mirvSpread ?? player.mirvSpread);
         }
-        this.setActiveProjectilesFromBurst(burst, message.weaponType);
+        if (message.consumeAmmo === false && (this.projectiles.length > 0 || this.pendingProjectiles.length > 0)) {
+            this.projectiles.push(...burst);
+        } else {
+            this.setActiveProjectilesFromBurst(burst, message.weaponType);
+        }
         this.state.phase = 'projectile';
         this.awaitingShotResult = true;
         this.audio.playFire(message.weaponType);
@@ -1763,7 +1803,7 @@ export class Game {
             : currentPlayer.isBot && this.isAuthoritative
                 ? `${currentPlayer.name} is calculating a firing solution.`
                 : this.canLocalControlCurrentTank()
-                    ? 'Arrow left/right aims, arrow up/down charges power, hold Ctrl for fine adjustment, Q/E swaps weapons, space fires.'
+                    ? 'Arrow left/right aims, arrow up/down charges power, hold Ctrl, Shift, Alt, or Cmd for fine adjustment, Q/E swaps weapons, space fires.'
                     : this.awaitingShotResult || this.projectiles.length > 0
                         ? 'Shot is resolving. Waiting for impact, debris, and terrain collapse.'
                         : `Waiting for ${currentPlayer.name} to act.`;

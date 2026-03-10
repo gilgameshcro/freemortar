@@ -10,6 +10,7 @@ const columns = [
   'type',
   'name',
   'category',
+  'shop_category',
   'shop_price',
   'bundle_count',
   'effect_count',
@@ -55,6 +56,7 @@ function csvEscape(value) {
 
 function valueForColumn(row, column) {
   switch (column) {
+    case 'shop_category': return row.shopCategory;
     case 'shop_price': return row.shopPrice;
     case 'bundle_count': return row.bundleCount;
     case 'effect_count': return row.effectCount;
@@ -101,3 +103,4 @@ for (const row of weaponBalance) {
 
 fs.writeFileSync(outPath, lines.join('\n') + '\n', 'utf8');
 console.log(`Exported ${weaponBalance.length} weapons to ${path.relative(root, outPath)}`);
+

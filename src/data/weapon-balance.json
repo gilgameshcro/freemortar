@@ -41,7 +41,8 @@
     "chaosDecayFactor": null,
     "pushRadius": null,
     "pushForce": null,
-    "debugBehavior": ""
+    "debugBehavior": "",
+    "shopCategory": "basic-attack"
   },
   {
     "type": "mortar",
@@ -86,7 +87,8 @@
     "chaosDecayFactor": null,
     "pushRadius": null,
     "pushForce": null,
-    "debugBehavior": "Intended role: attack. One purchase grants x2 ammo. A single use creates about 1 major effect(s). Wide crater and good splash. Debug tags: Arc shot | Splash."
+    "debugBehavior": "Intended role: attack. One purchase grants x2 ammo. A single use creates about 1 major effect(s). Wide crater and good splash. Debug tags: Arc shot | Splash.",
+    "shopCategory": "basic-attack"
   },
   {
     "type": "needle",
@@ -131,7 +133,8 @@
     "chaosDecayFactor": null,
     "pushRadius": null,
     "pushForce": null,
-    "debugBehavior": "Intended role: attack. One purchase grants x2 ammo. A single use creates about 1 major effect(s). Sharp direct-hit punisher. Debug tags: Direct hit | Low blast."
+    "debugBehavior": "Intended role: attack. One purchase grants x2 ammo. A single use creates about 1 major effect(s). Sharp direct-hit punisher. Debug tags: Direct hit | Low blast.",
+    "shopCategory": "basic-attack"
   },
   {
     "type": "nova",
@@ -145,8 +148,8 @@
     "projectileColor": "#c9f2ff",
     "trailColor": "#e8fbff",
     "category": "attack",
-    "shopPrice": 180,
-    "bundleCount": 1,
+    "shopPrice": 150,
+    "bundleCount": 2,
     "effectCount": 1,
     "specialEffects": [
       "Nova bloom",
@@ -176,7 +179,8 @@
     "chaosDecayFactor": null,
     "pushRadius": null,
     "pushForce": null,
-    "debugBehavior": "Intended role: attack. One purchase grants x1 ammo. A single use creates about 1 major effect(s). Heavy blast finisher with a cold nova bloom. Debug tags: Nova bloom | Heavy finisher."
+    "debugBehavior": "Intended role: attack. One purchase grants x1 ammo. A single use creates about 1 major effect(s). Heavy blast finisher with a cold nova bloom. Debug tags: Nova bloom | Heavy finisher.",
+    "shopCategory": "basic-attack"
   },
   {
     "type": "emp_shell",
@@ -189,8 +193,8 @@
     "damage": 54,
     "projectileColor": "#8bf7ff",
     "trailColor": "#e1fdff",
-    "category": "hybrid",
-    "shopPrice": 170,
+    "category": "attack",
+    "shopPrice": 220,
     "bundleCount": 2,
     "effectCount": 1,
     "specialEffects": [
@@ -221,7 +225,8 @@
     "chaosDecayFactor": null,
     "pushRadius": null,
     "pushForce": null,
-    "debugBehavior": "Intended role: hybrid. One purchase grants x2 ammo. A single use creates about 1 major effect(s). Tight heavy shell that strips 75 shield before the strike lands. Debug tags: EMP 75 | Tight finisher."
+    "debugBehavior": "Intended role: hybrid. One purchase grants x2 ammo. A single use creates about 1 major effect(s). Tight heavy shell that strips 75 shield before the strike lands. Debug tags: EMP 75 | Tight finisher.",
+    "shopCategory": "anti-shield-attack"
   },
   {
     "type": "blast_bomb",
@@ -234,7 +239,7 @@
     "damage": 10,
     "projectileColor": "#ffd96a",
     "trailColor": "#fff0a8",
-    "category": "utility",
+    "category": "attack",
     "shopPrice": 115,
     "bundleCount": 3,
     "effectCount": 1,
@@ -266,7 +271,8 @@
     "chaosDecayFactor": null,
     "pushRadius": 124,
     "pushForce": 62,
-    "debugBehavior": "Intended role: utility. One purchase grants x3 ammo. A single use creates about 1 major effect(s). Huge terrain clear, weak direct damage. Debug tags: Huge crater | Shock push."
+    "debugBehavior": "Intended role: utility. One purchase grants x3 ammo. A single use creates about 1 major effect(s). Huge terrain clear, weak direct damage. Debug tags: Huge crater | Shock push.",
+    "shopCategory": "control-attack"
   },
   {
     "type": "emp_bomb",
@@ -279,7 +285,7 @@
     "damage": 16,
     "projectileColor": "#8cf3ff",
     "trailColor": "#dcfcff",
-    "category": "hybrid",
+    "category": "attack",
     "shopPrice": 190,
     "bundleCount": 2,
     "effectCount": 1,
@@ -311,7 +317,8 @@
     "chaosDecayFactor": null,
     "pushRadius": null,
     "pushForce": null,
-    "debugBehavior": "Intended role: hybrid. One purchase grants x2 ammo. A single use creates about 1 major effect(s). Wide disruption blast that strips 50 shield before the payload lands. Debug tags: EMP 50 | Wide disruption."
+    "debugBehavior": "Intended role: hybrid. One purchase grants x2 ammo. A single use creates about 1 major effect(s). Wide disruption blast that strips 50 shield before the payload lands. Debug tags: EMP 50 | Wide disruption.",
+    "shopCategory": "anti-shield-attack"
   },
   {
     "type": "autocannon",
@@ -356,7 +363,8 @@
     "chaosDecayFactor": null,
     "pushRadius": null,
     "pushForce": null,
-    "debugBehavior": "Intended role: attack. One purchase grants x3 ammo. A single use creates about 5 major effect(s). Bursts five jittered shells downrange. Debug tags: Burst x5 | Scatter."
+    "debugBehavior": "Intended role: attack. One purchase grants x3 ammo. A single use creates about 5 major effect(s). Bursts five jittered shells downrange. Debug tags: Burst x5 | Scatter.",
+    "shopCategory": "basic-attack"
   },
   {
     "type": "minigun",
@@ -401,7 +409,8 @@
     "chaosDecayFactor": null,
     "pushRadius": null,
     "pushForce": null,
-    "debugBehavior": "Intended role: attack. One purchase grants x2 ammo. A single use creates about 15 major effect(s). Sprays fifteen light shells in a long suppressive burst. Debug tags: Burst x15 | Suppressive fire."
+    "debugBehavior": "Intended role: attack. One purchase grants x2 ammo. A single use creates about 15 major effect(s). Sprays fifteen light shells in a long suppressive burst. Debug tags: Burst x15 | Suppressive fire.",
+    "shopCategory": "basic-attack"
   },
   {
     "type": "roller",
@@ -414,7 +423,7 @@
     "damage": 30,
     "projectileColor": "#f6c177",
     "trailColor": "#ffe6bf",
-    "category": "hybrid",
+    "category": "attack",
     "shopPrice": 145,
     "bundleCount": 2,
     "effectCount": 1,
@@ -445,7 +454,8 @@
     "chaosDecayFactor": null,
     "pushRadius": null,
     "pushForce": null,
-    "debugBehavior": "Intended role: hybrid. One purchase grants x2 ammo. A single use creates about 1 major effect(s). Drops to the ground, rolls forward, and detonates on contact or burnout. Debug tags: Ground roll."
+    "debugBehavior": "Intended role: hybrid. One purchase grants x2 ammo. A single use creates about 1 major effect(s). Drops to the ground, rolls forward, and detonates on contact or burnout. Debug tags: Ground roll.",
+    "shopCategory": "homing-attack"
   },
   {
     "type": "flux_bomb",
@@ -459,7 +469,7 @@
     "projectileColor": "#a5b4fc",
     "trailColor": "#dbe4ff",
     "category": "attack",
-    "shopPrice": 155,
+    "shopPrice": null,
     "bundleCount": 2,
     "effectCount": 2,
     "specialEffects": [
@@ -490,7 +500,8 @@
     "chaosDecayFactor": null,
     "pushRadius": null,
     "pushForce": null,
-    "debugBehavior": "Intended role: attack. One purchase grants x2 ammo. A single use creates about 2 major effect(s). Balanced shell with elastic damage falloff and a tuned payload. Debug tags: Elastic payload | Dual pressure."
+    "debugBehavior": "Intended role: attack. One purchase grants x2 ammo. A single use creates about 2 major effect(s). Balanced shell with elastic damage falloff and a tuned payload. Debug tags: Elastic payload | Dual pressure.",
+    "shopCategory": "retired"
   },
   {
     "type": "driller",
@@ -503,9 +514,9 @@
     "damage": 18,
     "projectileColor": "#c0a7ff",
     "trailColor": "#e0d5ff",
-    "category": "utility",
+    "category": "attack",
     "shopPrice": 135,
-    "bundleCount": 3,
+    "bundleCount": 2,
     "effectCount": 8,
     "specialEffects": [
       "Line bore",
@@ -535,7 +546,8 @@
     "chaosDecayFactor": null,
     "pushRadius": null,
     "pushForce": null,
-    "debugBehavior": "Intended role: utility. One purchase grants x3 ammo. A single use creates about 8 major effect(s). Punches forward with a line of detonations. Debug tags: Line bore | Terrain cut."
+    "debugBehavior": "Intended role: utility. One purchase grants x3 ammo. A single use creates about 8 major effect(s). Punches forward with a line of detonations. Debug tags: Line bore | Terrain cut.",
+    "shopCategory": "control-attack"
   },
   {
     "type": "seeder",
@@ -579,7 +591,8 @@
     "chaosDecayFactor": null,
     "pushRadius": null,
     "pushForce": null,
-    "debugBehavior": "Intended role: attack. One purchase grants x3 ammo. A single use creates about 6 major effect(s). Scatters bomblets along the final section of its flight path. Debug tags: Flight bomblets."
+    "debugBehavior": "Intended role: attack. One purchase grants x3 ammo. A single use creates about 6 major effect(s). Scatters bomblets along the final section of its flight path. Debug tags: Flight bomblets.",
+    "shopCategory": "mass-attack"
   },
   {
     "type": "nuclear_seeder",
@@ -594,7 +607,7 @@
     "trailColor": "#ffe6c2",
     "category": "attack",
     "shopPrice": 280,
-    "bundleCount": 2,
+    "bundleCount": 3,
     "effectCount": 6,
     "specialEffects": [
       "Flight bomblets",
@@ -624,7 +637,8 @@
     "chaosDecayFactor": null,
     "pushRadius": null,
     "pushForce": null,
-    "debugBehavior": "Intended role: attack. One purchase grants x2 ammo. A single use creates about 6 major effect(s). Drops delayed nuclear bomblets along its flight path. Debug tags: Flight bomblets | Nuclear drops."
+    "debugBehavior": "Intended role: attack. One purchase grants x2 ammo. A single use creates about 6 major effect(s). Drops delayed nuclear bomblets along its flight path. Debug tags: Flight bomblets | Nuclear drops.",
+    "shopCategory": "mass-attack"
   },
   {
     "type": "echo_shell",
@@ -638,7 +652,7 @@
     "projectileColor": "#7dd3fc",
     "trailColor": "#d7f5ff",
     "category": "attack",
-    "shopPrice": 150,
+    "shopPrice": null,
     "bundleCount": 2,
     "effectCount": 2,
     "specialEffects": [
@@ -669,7 +683,8 @@
     "chaosDecayFactor": null,
     "pushRadius": null,
     "pushForce": null,
-    "debugBehavior": "Intended role: attack. One purchase grants x2 ammo. A single use creates about 2 major effect(s). Implodes first, then detonates with a delayed gravity burst. Debug tags: Implosion | Delayed blast."
+    "debugBehavior": "Intended role: attack. One purchase grants x2 ammo. A single use creates about 2 major effect(s). Implodes first, then detonates with a delayed gravity burst. Debug tags: Implosion | Delayed blast.",
+    "shopCategory": "retired"
   },
   {
     "type": "merv",
@@ -683,7 +698,7 @@
     "projectileColor": "#74c0fc",
     "trailColor": "#d0ebff",
     "category": "attack",
-    "shopPrice": 210,
+    "shopPrice": 180,
     "bundleCount": 2,
     "effectCount": 3,
     "specialEffects": [
@@ -713,7 +728,8 @@
     "chaosDecayFactor": null,
     "pushRadius": null,
     "pushForce": null,
-    "debugBehavior": "Intended role: attack. One purchase grants x2 ammo. A single use creates about 3 major effect(s). Splits into three falling warheads after apex or rebound. Debug tags: Apex split x3 | Nuclear effect."
+    "debugBehavior": "Intended role: attack. One purchase grants x2 ammo. A single use creates about 3 major effect(s). Splits into three falling warheads after apex or rebound. Debug tags: Apex split x3 | Nuclear effect.",
+    "shopCategory": "mass-attack"
   },
   {
     "type": "merv_mk2",
@@ -727,8 +743,8 @@
     "projectileColor": "#8ccfff",
     "trailColor": "#ddf3ff",
     "category": "attack",
-    "shopPrice": 290,
-    "bundleCount": 1,
+    "shopPrice": 230,
+    "bundleCount": 2,
     "effectCount": 5,
     "specialEffects": [
       "Apex split x5"
@@ -757,7 +773,8 @@
     "chaosDecayFactor": null,
     "pushRadius": null,
     "pushForce": null,
-    "debugBehavior": "Intended role: attack. One purchase grants x1 ammo. A single use creates about 5 major effect(s). Splits into five falling warheads after apex or rebound. Debug tags: Apex split x5 | Nuclear effect."
+    "debugBehavior": "Intended role: attack. One purchase grants x1 ammo. A single use creates about 5 major effect(s). Splits into five falling warheads after apex or rebound. Debug tags: Apex split x5 | Nuclear effect.",
+    "shopCategory": "mass-attack"
   },
   {
     "type": "command_mirv",
@@ -771,7 +788,7 @@
     "projectileColor": "#93c5fd",
     "trailColor": "#e0f2fe",
     "category": "attack",
-    "shopPrice": 240,
+    "shopPrice": 220,
     "bundleCount": 2,
     "effectCount": 3,
     "specialEffects": [
@@ -801,7 +818,8 @@
     "chaosDecayFactor": null,
     "pushRadius": null,
     "pushForce": null,
-    "debugBehavior": "Intended role: attack. One purchase grants x2 ammo. A single use creates about 3 major effect(s). Power-tuned MIRV with tighter or wider split spacing. Debug tags: Apex split x3 | Spread select | Nuclear effect."
+    "debugBehavior": "Intended role: attack. One purchase grants x2 ammo. A single use creates about 3 major effect(s). Power-tuned MIRV with tighter or wider split spacing. Debug tags: Apex split x3 | Spread select | Nuclear effect.",
+    "shopCategory": "mass-attack"
   },
   {
     "type": "chaos",
@@ -815,8 +833,8 @@
     "projectileColor": "#ffd43b",
     "trailColor": "#fff3bf",
     "category": "attack",
-    "shopPrice": 260,
-    "bundleCount": 1,
+    "shopPrice": 180,
+    "bundleCount": 2,
     "effectCount": 3,
     "specialEffects": [
       "Chain x3"
@@ -845,7 +863,8 @@
     "chaosDecayFactor": 0.6667,
     "pushRadius": null,
     "pushForce": null,
-    "debugBehavior": "Intended role: attack. One purchase grants x1 ammo. A single use creates about 3 major effect(s). Chains three explosions through the sky. Debug tags: Chain x3 | 2/3 charge falloff."
+    "debugBehavior": "Intended role: attack. One purchase grants x1 ammo. A single use creates about 3 major effect(s). Chains three explosions through the sky. Debug tags: Chain x3 | 2/3 charge falloff.",
+    "shopCategory": "mass-attack"
   },
   {
     "type": "chaos_mirv",
@@ -860,7 +879,7 @@
     "trailColor": "#ffe8a3",
     "category": "attack",
     "shopPrice": 320,
-    "bundleCount": 1,
+    "bundleCount": 2,
     "effectCount": 9,
     "specialEffects": [
       "Split x3",
@@ -890,7 +909,8 @@
     "chaosDecayFactor": 0.6667,
     "pushRadius": null,
     "pushForce": null,
-    "debugBehavior": "Intended role: attack. One purchase grants x1 ammo. A single use creates about 9 major effect(s). A MIRV whose bomblets keep chaining chaos blasts. Debug tags: Apex split x3 | Chaos chain | 2/3 charge falloff."
+    "debugBehavior": "Intended role: attack. One purchase grants x1 ammo. A single use creates about 9 major effect(s). A MIRV whose bomblets keep chaining chaos blasts. Debug tags: Apex split x3 | Chaos chain | 2/3 charge falloff.",
+    "shopCategory": "mass-attack"
   },
   {
     "type": "bunker_buster",
@@ -935,7 +955,8 @@
     "chaosDecayFactor": null,
     "pushRadius": null,
     "pushForce": null,
-    "debugBehavior": "Intended role: attack. One purchase grants x2 ammo. A single use creates about 1 major effect(s). Burrows through terrain, then punches out with a shaped charge on exit. Debug tags: Burrow | Shaped charge."
+    "debugBehavior": "Intended role: attack. One purchase grants x2 ammo. A single use creates about 1 major effect(s). Burrows through terrain, then punches out with a shaped charge on exit. Debug tags: Burrow | Shaped charge.",
+    "shopCategory": "control-attack"
   },
   {
     "type": "phase_round",
@@ -948,8 +969,8 @@
     "damage": 28,
     "projectileColor": "#86efac",
     "trailColor": "#dcfce7",
-    "category": "hybrid",
-    "shopPrice": 180,
+    "category": "attack",
+    "shopPrice": 200,
     "bundleCount": 2,
     "effectCount": 1,
     "specialEffects": [
@@ -979,7 +1000,8 @@
     "chaosDecayFactor": null,
     "pushRadius": null,
     "pushForce": null,
-    "debugBehavior": "Intended role: hybrid. One purchase grants x2 ammo. A single use creates about 1 major effect(s). Ignores the first terrain layer and bursts on the second contact. Debug tags: Phase first layer | Ghost trail."
+    "debugBehavior": "Intended role: hybrid. One purchase grants x2 ammo. A single use creates about 1 major effect(s). Ignores the first terrain layer and bursts on the second contact. Debug tags: Phase first layer | Ghost trail.",
+    "shopCategory": "control-attack"
   },
   {
     "type": "homing_missile",
@@ -993,7 +1015,7 @@
     "projectileColor": "#9bf6ff",
     "trailColor": "#dffcff",
     "category": "attack",
-    "shopPrice": 225,
+    "shopPrice": 120,
     "bundleCount": 2,
     "effectCount": 1,
     "specialEffects": [
@@ -1023,7 +1045,8 @@
     "chaosDecayFactor": null,
     "pushRadius": null,
     "pushForce": null,
-    "debugBehavior": "Intended role: attack. One purchase grants x2 ammo. A single use creates about 1 major effect(s). Entry missile with limited terminal correction. Debug tags: Terminal lock | Missile family."
+    "debugBehavior": "Intended role: attack. One purchase grants x2 ammo. A single use creates about 1 major effect(s). Entry missile with limited terminal correction. Debug tags: Terminal lock | Missile family.",
+    "shopCategory": "homing-attack"
   },
   {
     "type": "missile_mk2",
@@ -1037,7 +1060,7 @@
     "projectileColor": "#8ee7ff",
     "trailColor": "#dcfbff",
     "category": "attack",
-    "shopPrice": 280,
+    "shopPrice": 160,
     "bundleCount": 2,
     "effectCount": 1,
     "specialEffects": [
@@ -1067,7 +1090,8 @@
     "chaosDecayFactor": null,
     "pushRadius": null,
     "pushForce": null,
-    "debugBehavior": "Intended role: attack. One purchase grants x2 ammo. A single use creates about 1 major effect(s). Improved missile with more terminal correction fuel. Debug tags: Terminal lock | Extra fuel."
+    "debugBehavior": "Intended role: attack. One purchase grants x2 ammo. A single use creates about 1 major effect(s). Improved missile with more terminal correction fuel. Debug tags: Terminal lock | Extra fuel.",
+    "shopCategory": "homing-attack"
   },
   {
     "type": "missile_mk3",
@@ -1081,8 +1105,8 @@
     "projectileColor": "#7fe1ff",
     "trailColor": "#d4f7ff",
     "category": "attack",
-    "shopPrice": 345,
-    "bundleCount": 1,
+    "shopPrice": 210,
+    "bundleCount": 2,
     "effectCount": 1,
     "specialEffects": [
       "Strong lock"
@@ -1111,7 +1135,8 @@
     "chaosDecayFactor": null,
     "pushRadius": null,
     "pushForce": null,
-    "debugBehavior": "Intended role: attack. One purchase grants x1 ammo. A single use creates about 1 major effect(s). Advanced missile with the deepest steering reserve. Debug tags: Terminal lock | Deep fuel reserve."
+    "debugBehavior": "Intended role: attack. One purchase grants x1 ammo. A single use creates about 1 major effect(s). Advanced missile with the deepest steering reserve. Debug tags: Terminal lock | Deep fuel reserve.",
+    "shopCategory": "homing-attack"
   },
   {
     "type": "emp_missile",
@@ -1124,8 +1149,8 @@
     "damage": 22,
     "projectileColor": "#8de8ff",
     "trailColor": "#dffbff",
-    "category": "hybrid",
-    "shopPrice": 240,
+    "category": "attack",
+    "shopPrice": 180,
     "bundleCount": 2,
     "effectCount": 1,
     "specialEffects": [
@@ -1156,7 +1181,8 @@
     "chaosDecayFactor": null,
     "pushRadius": null,
     "pushForce": null,
-    "debugBehavior": "Intended role: hybrid. One purchase grants x2 ammo. A single use creates about 1 major effect(s). Mk II homing missile that strips 50 shield before impact damage. Debug tags: EMP 50 | Mk II homing."
+    "debugBehavior": "Intended role: hybrid. One purchase grants x2 ammo. A single use creates about 1 major effect(s). Mk II homing missile that strips 50 shield before impact damage. Debug tags: EMP 50 | Mk II homing.",
+    "shopCategory": "anti-shield-attack"
   },
   {
     "type": "nuclear_missile_mk1",
@@ -1171,7 +1197,7 @@
     "trailColor": "#fff0d6",
     "category": "attack",
     "shopPrice": 300,
-    "bundleCount": 1,
+    "bundleCount": 2,
     "effectCount": 1,
     "specialEffects": [
       "Late lock",
@@ -1201,7 +1227,8 @@
     "chaosDecayFactor": null,
     "pushRadius": null,
     "pushForce": null,
-    "debugBehavior": "Intended role: attack. One purchase grants x1 ammo. A single use creates about 1 major effect(s). Mk I missile guidance wrapped around a nuclear payload. Debug tags: Terminal lock | Nuclear effect."
+    "debugBehavior": "Intended role: attack. One purchase grants x1 ammo. A single use creates about 1 major effect(s). Mk I missile guidance wrapped around a nuclear payload. Debug tags: Terminal lock | Nuclear effect.",
+    "shopCategory": "homing-attack"
   },
   {
     "type": "nuclear_missile_mk2",
@@ -1216,7 +1243,7 @@
     "trailColor": "#ffe7c0",
     "category": "attack",
     "shopPrice": 380,
-    "bundleCount": 1,
+    "bundleCount": 2,
     "effectCount": 1,
     "specialEffects": [
       "Improved lock",
@@ -1246,7 +1273,8 @@
     "chaosDecayFactor": null,
     "pushRadius": null,
     "pushForce": null,
-    "debugBehavior": "Intended role: attack. One purchase grants x1 ammo. A single use creates about 1 major effect(s). Mk II missile guidance with a large nuclear detonation. Debug tags: Terminal lock | Extra fuel | Nuclear effect."
+    "debugBehavior": "Intended role: attack. One purchase grants x1 ammo. A single use creates about 1 major effect(s). Mk II missile guidance with a large nuclear detonation. Debug tags: Terminal lock | Extra fuel | Nuclear effect.",
+    "shopCategory": "homing-attack"
   },
   {
     "type": "nuclear_missile_mk3",
@@ -1261,7 +1289,7 @@
     "trailColor": "#ffe0b3",
     "category": "attack",
     "shopPrice": 470,
-    "bundleCount": 1,
+    "bundleCount": 2,
     "effectCount": 1,
     "specialEffects": [
       "Strong lock",
@@ -1291,7 +1319,8 @@
     "chaosDecayFactor": null,
     "pushRadius": null,
     "pushForce": null,
-    "debugBehavior": "Intended role: attack. One purchase grants x1 ammo. A single use creates about 1 major effect(s). Top-tier missile guidance paired with a brutal nuclear blast. Debug tags: Terminal lock | Deep fuel reserve | Nuclear effect."
+    "debugBehavior": "Intended role: attack. One purchase grants x1 ammo. A single use creates about 1 major effect(s). Top-tier missile guidance paired with a brutal nuclear blast. Debug tags: Terminal lock | Deep fuel reserve | Nuclear effect.",
+    "shopCategory": "homing-attack"
   },
   {
     "type": "gravity_well",
@@ -1304,9 +1333,9 @@
     "damage": 12,
     "projectileColor": "#93c5fd",
     "trailColor": "#bfdbfe",
-    "category": "utility",
-    "shopPrice": 200,
-    "bundleCount": 2,
+    "category": "attack",
+    "shopPrice": 120,
+    "bundleCount": 3,
     "effectCount": 1,
     "specialEffects": [
       "Pull inward"
@@ -1335,7 +1364,8 @@
     "chaosDecayFactor": null,
     "pushRadius": null,
     "pushForce": null,
-    "debugBehavior": "Intended role: utility. One purchase grants x2 ammo. A single use creates about 1 major effect(s). Weak blast that drags tanks inward and roughens the ground. Debug tags: Wide pull field."
+    "debugBehavior": "Intended role: utility. One purchase grants x2 ammo. A single use creates about 1 major effect(s). Weak blast that drags tanks inward and roughens the ground. Debug tags: Wide pull field.",
+    "shopCategory": "control-attack"
   },
   {
     "type": "magnet_shell",
@@ -1348,8 +1378,8 @@
     "damage": 16,
     "projectileColor": "#67e8f9",
     "trailColor": "#cffafe",
-    "category": "hybrid",
-    "shopPrice": 170,
+    "category": "attack",
+    "shopPrice": null,
     "bundleCount": 2,
     "effectCount": 1,
     "specialEffects": [
@@ -1379,7 +1409,8 @@
     "chaosDecayFactor": null,
     "pushRadius": null,
     "pushForce": null,
-    "debugBehavior": "Intended role: hybrid. One purchase grants x2 ammo. A single use creates about 1 major effect(s). Tugs nearby tanks toward the impact point before the dust settles. Debug tags: Focused drag."
+    "debugBehavior": "Intended role: hybrid. One purchase grants x2 ammo. A single use creates about 1 major effect(s). Tugs nearby tanks toward the impact point before the dust settles. Debug tags: Focused drag.",
+    "shopCategory": "retired"
   },
   {
     "type": "wall",
@@ -1423,7 +1454,8 @@
     "chaosDecayFactor": null,
     "pushRadius": null,
     "pushForce": null,
-    "debugBehavior": "Intended role: utility. One purchase grants x2 ammo. A single use creates about 1 major effect(s). Raises a dirt wall at the impact point. Debug tags: Build cover."
+    "debugBehavior": "Intended role: utility. One purchase grants x2 ammo. A single use creates about 1 major effect(s). Raises a dirt wall at the impact point. Debug tags: Build cover.",
+    "shopCategory": "utility"
   },
   {
     "type": "large_wall",
@@ -1467,7 +1499,8 @@
     "chaosDecayFactor": null,
     "pushRadius": null,
     "pushForce": null,
-    "debugBehavior": "Intended role: utility. One purchase grants x1 ammo. A single use creates about 1 major effect(s). Raises a massive dirt barrier that can reshape the ridge. Debug tags: Build massive cover."
+    "debugBehavior": "Intended role: utility. One purchase grants x1 ammo. A single use creates about 1 major effect(s). Raises a massive dirt barrier that can reshape the ridge. Debug tags: Build massive cover.",
+    "shopCategory": "utility"
   },
   {
     "type": "relocator",
@@ -1511,7 +1544,8 @@
     "chaosDecayFactor": null,
     "pushRadius": null,
     "pushForce": null,
-    "debugBehavior": "Intended role: utility. One purchase grants x2 ammo. A single use creates about 1 major effect(s). Teleports the firing tank to the impact zone. Debug tags: Teleport."
+    "debugBehavior": "Intended role: utility. One purchase grants x2 ammo. A single use creates about 1 major effect(s). Teleports the firing tank to the impact zone. Debug tags: Teleport.",
+    "shopCategory": "utility"
   },
   {
     "type": "leech",
@@ -1524,7 +1558,7 @@
     "damage": 26,
     "projectileColor": "#f38ba8",
     "trailColor": "#ffd6df",
-    "category": "hybrid",
+    "category": "attack",
     "shopPrice": 145,
     "bundleCount": 2,
     "effectCount": 1,
@@ -1555,7 +1589,8 @@
     "chaosDecayFactor": null,
     "pushRadius": null,
     "pushForce": null,
-    "debugBehavior": "Intended role: hybrid. One purchase grants x2 ammo. A single use creates about 1 major effect(s). Steals an amplified shield charge only from shielded targets. Debug tags: Shield siphon."
+    "debugBehavior": "Intended role: hybrid. One purchase grants x2 ammo. A single use creates about 1 major effect(s). Steals an amplified shield charge only from shielded targets. Debug tags: Shield siphon.",
+    "shopCategory": "anti-shield-attack"
   },
   {
     "type": "sinker",
@@ -1568,7 +1603,7 @@
     "damage": 16,
     "projectileColor": "#b197fc",
     "trailColor": "#e5dbff",
-    "category": "utility",
+    "category": "attack",
     "shopPrice": 150,
     "bundleCount": 2,
     "effectCount": 7,
@@ -1599,7 +1634,8 @@
     "chaosDecayFactor": null,
     "pushRadius": null,
     "pushForce": null,
-    "debugBehavior": "Intended role: utility. One purchase grants x2 ammo. A single use creates about 7 major effect(s). Bores straight downward into the earth with a wider cutting shaft. Debug tags: Vertical bore."
+    "debugBehavior": "Intended role: utility. One purchase grants x2 ammo. A single use creates about 7 major effect(s). Bores straight downward into the earth with a wider cutting shaft. Debug tags: Vertical bore.",
+    "shopCategory": "control-attack"
   },
   {
     "type": "crossfire",
@@ -1614,7 +1650,7 @@
     "trailColor": "#fff1bf",
     "category": "attack",
     "shopPrice": 170,
-    "bundleCount": 2,
+    "bundleCount": 3,
     "effectCount": 9,
     "specialEffects": [
       "Prism cross",
@@ -1644,7 +1680,8 @@
     "chaosDecayFactor": null,
     "pushRadius": null,
     "pushForce": null,
-    "debugBehavior": "Intended role: attack. One purchase grants x2 ammo. A single use creates about 9 major effect(s). Unfolds into prism-lit crossing lanes of delayed fire. Debug tags: Prism cross | Staggered fire."
+    "debugBehavior": "Intended role: attack. One purchase grants x2 ammo. A single use creates about 9 major effect(s). Unfolds into prism-lit crossing lanes of delayed fire. Debug tags: Prism cross | Staggered fire.",
+    "shopCategory": "basic-attack"
   },
   {
     "type": "large_cannon",
@@ -1659,7 +1696,7 @@
     "trailColor": "#fff7dc",
     "category": "attack",
     "shopPrice": 150,
-    "bundleCount": 1,
+    "bundleCount": 3,
     "effectCount": 1,
     "specialEffects": [
       "Heavy direct"
@@ -1688,7 +1725,8 @@
     "chaosDecayFactor": null,
     "pushRadius": null,
     "pushForce": null,
-    "debugBehavior": "Intended role: attack. One purchase grants x1 ammo. A single use creates about 1 major effect(s). Bigger shell with extra punch. Debug tags: Heavy direct."
+    "debugBehavior": "Intended role: attack. One purchase grants x1 ammo. A single use creates about 1 major effect(s). Bigger shell with extra punch. Debug tags: Heavy direct.",
+    "shopCategory": "basic-attack"
   },
   {
     "type": "large_mortar",
@@ -1703,7 +1741,7 @@
     "trailColor": "#ffe0ca",
     "category": "attack",
     "shopPrice": 190,
-    "bundleCount": 1,
+    "bundleCount": 2,
     "effectCount": 1,
     "specialEffects": [
       "Deep crater"
@@ -1732,7 +1770,8 @@
     "chaosDecayFactor": null,
     "pushRadius": null,
     "pushForce": null,
-    "debugBehavior": "Intended role: attack. One purchase grants x1 ammo. A single use creates about 1 major effect(s). Wider blast and deeper crater. Debug tags: Deep crater."
+    "debugBehavior": "Intended role: attack. One purchase grants x1 ammo. A single use creates about 1 major effect(s). Wider blast and deeper crater. Debug tags: Deep crater.",
+    "shopCategory": "basic-attack"
   },
   {
     "type": "large_needle",
@@ -1747,7 +1786,7 @@
     "trailColor": "#dffcff",
     "category": "attack",
     "shopPrice": 220,
-    "bundleCount": 1,
+    "bundleCount": 2,
     "effectCount": 1,
     "specialEffects": [
       "EMP drain",
@@ -1777,7 +1816,8 @@
     "chaosDecayFactor": null,
     "pushRadius": null,
     "pushForce": null,
-    "debugBehavior": "Intended role: attack. One purchase grants x1 ammo. A single use creates about 1 major effect(s). Strips shields on contact, then drives through with needle damage. Debug tags: EMP drain | Heavy direct."
+    "debugBehavior": "Intended role: attack. One purchase grants x1 ammo. A single use creates about 1 major effect(s). Strips shields on contact, then drives through with needle damage. Debug tags: EMP drain | Heavy direct.",
+    "shopCategory": "anti-shield-attack"
   },
   {
     "type": "large_nova",
@@ -1792,7 +1832,7 @@
     "trailColor": "#fbe0ff",
     "category": "attack",
     "shopPrice": 320,
-    "bundleCount": 1,
+    "bundleCount": 2,
     "effectCount": 1,
     "specialEffects": [
       "Massive finisher"
@@ -1821,7 +1861,8 @@
     "chaosDecayFactor": null,
     "pushRadius": null,
     "pushForce": null,
-    "debugBehavior": "Intended role: attack. One purchase grants x1 ammo. A single use creates about 1 major effect(s). Even heavier endgame detonation. Debug tags: Massive finisher."
+    "debugBehavior": "Intended role: attack. One purchase grants x1 ammo. A single use creates about 1 major effect(s). Even heavier endgame detonation. Debug tags: Massive finisher.",
+    "shopCategory": "basic-attack"
   },
   {
     "type": "omega_blast",
@@ -1836,7 +1877,7 @@
     "trailColor": "#ffe0c4",
     "category": "attack",
     "shopPrice": 460,
-    "bundleCount": 1,
+    "bundleCount": 2,
     "effectCount": 1,
     "specialEffects": [
       "Omega fireball",
@@ -1867,7 +1908,8 @@
     "chaosDecayFactor": null,
     "pushRadius": null,
     "pushForce": null,
-    "debugBehavior": "Intended role: attack. One purchase grants x1 ammo. A single use creates about 1 major effect(s). Dreadful atomic fireball with slow expanding shock rings. Debug tags: Omega fireball | Expanding rings | Lingering blast."
+    "debugBehavior": "Intended role: attack. One purchase grants x1 ammo. A single use creates about 1 major effect(s). Dreadful atomic fireball with slow expanding shock rings. Debug tags: Omega fireball | Expanding rings | Lingering blast.",
+    "shopCategory": "mass-attack"
   },
   {
     "type": "large_merv",
@@ -1881,8 +1923,8 @@
     "projectileColor": "#90d5ff",
     "trailColor": "#dff4ff",
     "category": "attack",
-    "shopPrice": 300,
-    "bundleCount": 1,
+    "shopPrice": 210,
+    "bundleCount": 2,
     "effectCount": 3,
     "specialEffects": [
       "Split x3"
@@ -1911,7 +1953,8 @@
     "chaosDecayFactor": null,
     "pushRadius": null,
     "pushForce": null,
-    "debugBehavior": "Intended role: attack. One purchase grants x1 ammo. A single use creates about 3 major effect(s). Three heavier split warheads. Debug tags: Apex split x3 | Nuclear effect."
+    "debugBehavior": "Intended role: attack. One purchase grants x1 ammo. A single use creates about 3 major effect(s). Three heavier split warheads. Debug tags: Apex split x3 | Nuclear effect.",
+    "shopCategory": "mass-attack"
   },
   {
     "type": "large_chaos",
@@ -1926,7 +1969,7 @@
     "trailColor": "#fff8c5",
     "category": "attack",
     "shopPrice": 380,
-    "bundleCount": 1,
+    "bundleCount": 2,
     "effectCount": 5,
     "specialEffects": [
       "Chain x5"
@@ -1955,7 +1998,8 @@
     "chaosDecayFactor": 0.6667,
     "pushRadius": null,
     "pushForce": null,
-    "debugBehavior": "Intended role: attack. One purchase grants x1 ammo. A single use creates about 5 major effect(s). Five chained detonations through the sky. Debug tags: Chain x5."
+    "debugBehavior": "Intended role: attack. One purchase grants x1 ammo. A single use creates about 5 major effect(s). Five chained detonations through the sky. Debug tags: Chain x5.",
+    "shopCategory": "mass-attack"
   },
   {
     "type": "large_chaos_mirv",
@@ -1970,7 +2014,7 @@
     "trailColor": "#ffe7c2",
     "category": "attack",
     "shopPrice": 540,
-    "bundleCount": 1,
+    "bundleCount": 2,
     "effectCount": 15,
     "specialEffects": [
       "Split x3",
@@ -2000,7 +2044,8 @@
     "chaosDecayFactor": 0.6667,
     "pushRadius": null,
     "pushForce": null,
-    "debugBehavior": "Intended role: attack. One purchase grants x1 ammo. A single use creates about 15 major effect(s). Heavy MIRV bomblets that each spiral into chaos. Debug tags: Apex split x3 | Chaos x5 | 2/3 charge falloff."
+    "debugBehavior": "Intended role: attack. One purchase grants x1 ammo. A single use creates about 15 major effect(s). Heavy MIRV bomblets that each spiral into chaos. Debug tags: Apex split x3 | Chaos x5 | 2/3 charge falloff.",
+    "shopCategory": "mass-attack"
   },
   {
     "type": "large_driller",
@@ -2013,9 +2058,9 @@
     "damage": 24,
     "projectileColor": "#d0bfff",
     "trailColor": "#eee5ff",
-    "category": "utility",
+    "category": "attack",
     "shopPrice": 270,
-    "bundleCount": 1,
+    "bundleCount": 2,
     "effectCount": 10,
     "specialEffects": [
       "Long line bore"
@@ -2044,7 +2089,8 @@
     "chaosDecayFactor": null,
     "pushRadius": null,
     "pushForce": null,
-    "debugBehavior": "Intended role: utility. One purchase grants x1 ammo. A single use creates about 10 major effect(s). Longer line-bore demolition strike. Debug tags: Long line bore."
+    "debugBehavior": "Intended role: utility. One purchase grants x1 ammo. A single use creates about 10 major effect(s). Longer line-bore demolition strike. Debug tags: Long line bore.",
+    "shopCategory": "control-attack"
   },
   {
     "type": "large_blast_bomb",
@@ -2057,9 +2103,9 @@
     "damage": 12,
     "projectileColor": "#ffe387",
     "trailColor": "#fff3c4",
-    "category": "utility",
+    "category": "attack",
     "shopPrice": 210,
-    "bundleCount": 1,
+    "bundleCount": 3,
     "effectCount": 1,
     "specialEffects": [
       "Massive clear"
@@ -2088,7 +2134,8 @@
     "chaosDecayFactor": null,
     "pushRadius": 76,
     "pushForce": 42,
-    "debugBehavior": "Intended role: utility. One purchase grants x1 ammo. A single use creates about 1 major effect(s). Massive terrain eraser with light damage. Debug tags: Massive clear."
+    "debugBehavior": "Intended role: utility. One purchase grants x1 ammo. A single use creates about 1 major effect(s). Massive terrain eraser with light damage. Debug tags: Massive clear.",
+    "shopCategory": "control-attack"
   },
   {
     "type": "large_autocannon",
@@ -2103,7 +2150,7 @@
     "trailColor": "#f8f9fa",
     "category": "attack",
     "shopPrice": 240,
-    "bundleCount": 1,
+    "bundleCount": 2,
     "effectCount": 7,
     "specialEffects": [
       "Burst x5"
@@ -2132,7 +2179,8 @@
     "chaosDecayFactor": null,
     "pushRadius": null,
     "pushForce": null,
-    "debugBehavior": "Intended role: attack. One purchase grants x1 ammo. A single use creates about 7 major effect(s). Seven heavier jittered shells. Debug tags: Burst x7 | Scatter."
+    "debugBehavior": "Intended role: attack. One purchase grants x1 ammo. A single use creates about 7 major effect(s). Seven heavier jittered shells. Debug tags: Burst x7 | Scatter.",
+    "shopCategory": "basic-attack"
   },
   {
     "type": "grapeshot",
@@ -2176,7 +2224,8 @@
     "chaosDecayFactor": null,
     "pushRadius": null,
     "pushForce": null,
-    "debugBehavior": "Intended role: attack. One purchase grants x3 ammo. A single use creates about 7 major effect(s). Launches a seven-pellet spread cone. Debug tags: Spread x7 | Pellet cone."
+    "debugBehavior": "Intended role: attack. One purchase grants x3 ammo. A single use creates about 7 major effect(s). Launches a seven-pellet spread cone. Debug tags: Spread x7 | Pellet cone.",
+    "shopCategory": "basic-attack"
   },
   {
     "type": "aftershock",
@@ -2189,7 +2238,7 @@
     "damage": 18,
     "projectileColor": "#c7b8ff",
     "trailColor": "#ece6ff",
-    "category": "hybrid",
+    "category": "attack",
     "shopPrice": 175,
     "bundleCount": 2,
     "effectCount": 7,
@@ -2220,7 +2269,8 @@
     "chaosDecayFactor": null,
     "pushRadius": null,
     "pushForce": null,
-    "debugBehavior": "Intended role: hybrid. One purchase grants x2 ammo. A single use creates about 7 major effect(s). Impact ripples into ground-hugging tremors on both sides. Debug tags: Ground ripple | Bilateral tremor."
+    "debugBehavior": "Intended role: hybrid. One purchase grants x2 ammo. A single use creates about 7 major effect(s). Impact ripples into ground-hugging tremors on both sides. Debug tags: Ground ripple | Bilateral tremor.",
+    "shopCategory": "basic-attack"
   },
   {
     "type": "bulwark_shell",
@@ -2233,9 +2283,9 @@
     "damage": 22,
     "projectileColor": "#d8b37a",
     "trailColor": "#f1dfc5",
-    "category": "hybrid",
-    "shopPrice": 165,
-    "bundleCount": 2,
+    "category": "attack",
+    "shopPrice": 110,
+    "bundleCount": 3,
     "effectCount": 2,
     "specialEffects": [
       "Blast + cover"
@@ -2264,7 +2314,8 @@
     "chaosDecayFactor": null,
     "pushRadius": null,
     "pushForce": null,
-    "debugBehavior": "Intended role: hybrid. One purchase grants x2 ammo. A single use creates about 2 major effect(s). Blasts a crater and immediately throws up a higher berm. Debug tags: Blast + cover."
+    "debugBehavior": "Intended role: hybrid. One purchase grants x2 ammo. A single use creates about 2 major effect(s). Blasts a crater and immediately throws up a higher berm. Debug tags: Blast + cover.",
+    "shopCategory": "control-attack"
   },
   {
     "type": "helix_shell",
@@ -2278,7 +2329,7 @@
     "projectileColor": "#9bf6ff",
     "trailColor": "#e1fcff",
     "category": "attack",
-    "shopPrice": 170,
+    "shopPrice": null,
     "bundleCount": 2,
     "effectCount": 7,
     "specialEffects": [
@@ -2308,7 +2359,8 @@
     "chaosDecayFactor": null,
     "pushRadius": null,
     "pushForce": null,
-    "debugBehavior": "Intended role: attack. One purchase grants x2 ammo. A single use creates about 7 major effect(s). Twists into alternating corkscrew bursts beyond the hit point. Debug tags: Corkscrew bursts | Forward twist."
+    "debugBehavior": "Intended role: attack. One purchase grants x2 ammo. A single use creates about 7 major effect(s). Twists into alternating corkscrew bursts beyond the hit point. Debug tags: Corkscrew bursts | Forward twist.",
+    "shopCategory": "retired"
   },
   {
     "type": "supernova_mirv",
@@ -2322,8 +2374,8 @@
     "projectileColor": "#9ed8ff",
     "trailColor": "#eefaff",
     "category": "attack",
-    "shopPrice": 360,
-    "bundleCount": 1,
+    "shopPrice": 300,
+    "bundleCount": 2,
     "effectCount": 3,
     "specialEffects": [
       "Split x3",
@@ -2353,7 +2405,8 @@
     "chaosDecayFactor": null,
     "pushRadius": null,
     "pushForce": null,
-    "debugBehavior": "Intended role: attack. One purchase grants x1 ammo. A single use creates about 3 major effect(s). Three blue-white nova bomblets with tighter but deadlier cores. Debug tags: Split x3 | Nova bloom."
+    "debugBehavior": "Intended role: attack. One purchase grants x1 ammo. A single use creates about 3 major effect(s). Three blue-white nova bomblets with tighter but deadlier cores. Debug tags: Split x3 | Nova bloom.",
+    "shopCategory": "mass-attack"
   },
   {
     "type": "apocalypse_mirv",
@@ -2367,8 +2420,8 @@
     "projectileColor": "#ffbf7c",
     "trailColor": "#ffe7c9",
     "category": "attack",
-    "shopPrice": 510,
-    "bundleCount": 1,
+    "shopPrice": 360,
+    "bundleCount": 2,
     "effectCount": 5,
     "specialEffects": [
       "Split x5",
@@ -2398,7 +2451,8 @@
     "chaosDecayFactor": null,
     "pushRadius": null,
     "pushForce": null,
-    "debugBehavior": "Intended role: attack. One purchase grants x1 ammo. A single use creates about 5 major effect(s). Five catastrophic nuclear bomblets for full battlefield denial. Debug tags: Split x5 | Nuclear bloom."
+    "debugBehavior": "Intended role: attack. One purchase grants x1 ammo. A single use creates about 5 major effect(s). Five catastrophic nuclear bomblets for full battlefield denial. Debug tags: Split x5 | Nuclear bloom.",
+    "shopCategory": "mass-attack"
   },
   {
     "type": "solar_mirv",
@@ -2411,9 +2465,9 @@
     "damage": 22,
     "projectileColor": "#ffe27a",
     "trailColor": "#fff4bf",
-    "category": "hybrid",
-    "shopPrice": 360,
-    "bundleCount": 1,
+    "category": "attack",
+    "shopPrice": 250,
+    "bundleCount": 2,
     "effectCount": 3,
     "specialEffects": [
       "Split x3",
@@ -2443,7 +2497,8 @@
     "chaosDecayFactor": null,
     "pushRadius": null,
     "pushForce": null,
-    "debugBehavior": "Intended role: hybrid. One purchase grants x1 ammo. A single use creates about 3 major effect(s). Three sun-hot bomblets that erase terrain in huge solar blooms. Debug tags: Split x3 | Solar bloom."
+    "debugBehavior": "Intended role: hybrid. One purchase grants x1 ammo. A single use creates about 3 major effect(s). Three sun-hot bomblets that erase terrain in huge solar blooms. Debug tags: Split x3 | Solar bloom.",
+    "shopCategory": "mass-attack"
   },
   {
     "type": "void_bomb",
@@ -2457,8 +2512,8 @@
     "projectileColor": "#b388ff",
     "trailColor": "#eadcff",
     "category": "attack",
-    "shopPrice": 280,
-    "bundleCount": 1,
+    "shopPrice": 200,
+    "bundleCount": 2,
     "effectCount": 1,
     "specialEffects": [
       "Void bloom",
@@ -2488,7 +2543,8 @@
     "chaosDecayFactor": null,
     "pushRadius": 200,
     "pushForce": 48,
-    "debugBehavior": "Intended role: attack. One purchase grants x1 ammo. A single use creates about 1 major effect(s). Collapses into a dark sphere that drags in half the battlefield before tearing terrain away. Debug tags: Void bloom | Dark core | Extreme pull."
+    "debugBehavior": "Intended role: attack. One purchase grants x1 ammo. A single use creates about 1 major effect(s). Collapses into a dark sphere that drags in half the battlefield before tearing terrain away. Debug tags: Void bloom | Dark core | Extreme pull.",
+    "shopCategory": "control-attack"
   },
   {
     "type": "singularity_echo",
@@ -2502,7 +2558,7 @@
     "projectileColor": "#9f7aea",
     "trailColor": "#e7dbff",
     "category": "attack",
-    "shopPrice": 310,
+    "shopPrice": null,
     "bundleCount": 1,
     "effectCount": 2,
     "specialEffects": [
@@ -2533,7 +2589,8 @@
     "chaosDecayFactor": null,
     "pushRadius": null,
     "pushForce": null,
-    "debugBehavior": "Intended role: attack. One purchase grants x1 ammo. A single use creates about 2 major effect(s). Implodes hard, pauses, then answers with a dark shock bloom. Debug tags: Implosion | Void echo."
+    "debugBehavior": "Intended role: attack. One purchase grants x1 ammo. A single use creates about 2 major effect(s). Implodes hard, pauses, then answers with a dark shock bloom. Debug tags: Implosion | Void echo.",
+    "shopCategory": "retired"
   },
   {
     "type": "chaos_crown",
@@ -2547,8 +2604,8 @@
     "projectileColor": "#bdefff",
     "trailColor": "#effbff",
     "category": "attack",
-    "shopPrice": 315,
-    "bundleCount": 1,
+    "shopPrice": 230,
+    "bundleCount": 2,
     "effectCount": 7,
     "specialEffects": [
       "Nova ring",
@@ -2578,7 +2635,8 @@
     "chaosDecayFactor": 0.6667,
     "pushRadius": null,
     "pushForce": null,
-    "debugBehavior": "Intended role: attack. One purchase grants x1 ammo. A single use creates about 7 major effect(s). A central nova bloom that crowns the impact with pale blue nova bursts. Debug tags: Nova ring | Crown bursts."
+    "debugBehavior": "Intended role: attack. One purchase grants x1 ammo. A single use creates about 7 major effect(s). A central nova bloom that crowns the impact with pale blue nova bursts. Debug tags: Nova ring | Crown bursts.",
+    "shopCategory": "basic-attack"
   },
   {
     "type": "eclipse_shell",
@@ -2592,7 +2650,7 @@
     "projectileColor": "#c4b5fd",
     "trailColor": "#efe8ff",
     "category": "attack",
-    "shopPrice": 335,
+    "shopPrice": null,
     "bundleCount": 1,
     "effectCount": 7,
     "specialEffects": [
@@ -2623,7 +2681,8 @@
     "chaosDecayFactor": null,
     "pushRadius": null,
     "pushForce": null,
-    "debugBehavior": "Intended role: attack. One purchase grants x1 ammo. A single use creates about 7 major effect(s). Starts as a dark implosion, then breaks into a surrounding eclipse halo. Debug tags: Implode | Halo bloom."
+    "debugBehavior": "Intended role: attack. One purchase grants x1 ammo. A single use creates about 7 major effect(s). Starts as a dark implosion, then breaks into a surrounding eclipse halo. Debug tags: Implode | Halo bloom.",
+    "shopCategory": "retired"
   },
   {
     "type": "aurora_helix",
@@ -2637,7 +2696,7 @@
     "projectileColor": "#8fd8ff",
     "trailColor": "#ecfbff",
     "category": "attack",
-    "shopPrice": 245,
+    "shopPrice": null,
     "bundleCount": 2,
     "effectCount": 7,
     "specialEffects": [
@@ -2667,7 +2726,8 @@
     "chaosDecayFactor": null,
     "pushRadius": null,
     "pushForce": null,
-    "debugBehavior": "Intended role: attack. One purchase grants x2 ammo. A single use creates about 7 major effect(s). Threads a blue-white helix of delayed nova blooms through the air. Debug tags: Helix nova | Delayed blooms."
+    "debugBehavior": "Intended role: attack. One purchase grants x2 ammo. A single use creates about 7 major effect(s). Threads a blue-white helix of delayed nova blooms through the air. Debug tags: Helix nova | Delayed blooms.",
+    "shopCategory": "retired"
   },
   {
     "type": "storm_net",
@@ -2680,8 +2740,8 @@
     "damage": 16,
     "projectileColor": "#76e4ff",
     "trailColor": "#dbfbff",
-    "category": "hybrid",
-    "shopPrice": 275,
+    "category": "attack",
+    "shopPrice": null,
     "bundleCount": 1,
     "effectCount": 9,
     "specialEffects": [
@@ -2712,7 +2772,8 @@
     "chaosDecayFactor": null,
     "pushRadius": null,
     "pushForce": null,
-    "debugBehavior": "Intended role: hybrid. One purchase grants x1 ammo. A single use creates about 9 major effect(s). Throws a larger electric snare with repeated net pulses and stronger drag. Debug tags: Storm grid | Heavy drag."
+    "debugBehavior": "Intended role: hybrid. One purchase grants x1 ammo. A single use creates about 9 major effect(s). Throws a larger electric snare with repeated net pulses and stronger drag. Debug tags: Storm grid | Heavy drag.",
+    "shopCategory": "retired"
   },
   {
     "type": "shield_small",
@@ -2725,8 +2786,8 @@
     "damage": 0,
     "projectileColor": "#62e7ff",
     "trailColor": "#b5f6ff",
-    "category": "defense",
-    "shopPrice": 95,
+    "category": "utility",
+    "shopPrice": 80,
     "bundleCount": 1,
     "effectCount": 1,
     "specialEffects": [
@@ -2756,7 +2817,8 @@
     "chaosDecayFactor": null,
     "pushRadius": null,
     "pushForce": null,
-    "debugBehavior": "Intended role: defense. One purchase grants x1 ammo. A single use creates about 1 major effect(s). Raises shield up to 25 next round. Debug tags: Shield top-up."
+    "debugBehavior": "Intended role: defense. One purchase grants x1 ammo. A single use creates about 1 major effect(s). Raises shield up to 25 next round. Debug tags: Shield top-up.",
+    "shopCategory": "utility"
   },
   {
     "type": "shield_medium",
@@ -2769,8 +2831,8 @@
     "damage": 0,
     "projectileColor": "#51cfde",
     "trailColor": "#c5f6fa",
-    "category": "defense",
-    "shopPrice": 180,
+    "category": "utility",
+    "shopPrice": 150,
     "bundleCount": 1,
     "effectCount": 1,
     "specialEffects": [
@@ -2800,7 +2862,8 @@
     "chaosDecayFactor": null,
     "pushRadius": null,
     "pushForce": null,
-    "debugBehavior": "Intended role: defense. One purchase grants x1 ammo. A single use creates about 1 major effect(s). Raises shield up to 50 next round. Debug tags: Shield top-up."
+    "debugBehavior": "Intended role: defense. One purchase grants x1 ammo. A single use creates about 1 major effect(s). Raises shield up to 50 next round. Debug tags: Shield top-up.",
+    "shopCategory": "utility"
   },
   {
     "type": "shield_large",
@@ -2813,7 +2876,7 @@
     "damage": 0,
     "projectileColor": "#38d9a9",
     "trailColor": "#c3fae8",
-    "shopPrice": null,
+    "shopPrice": 280,
     "bundleCount": 1,
     "effectCount": 1,
     "specialEffects": [
@@ -2841,6 +2904,8 @@
     "chaosDecayFactor": null,
     "pushRadius": null,
     "pushForce": null,
-    "debugBehavior": "Intended role: defense. One purchase grants x1 ammo. A single use creates about 1 major effect(s). Raises shield up to 100 next round. Debug tags: Shield top-up."
+    "debugBehavior": "Intended role: defense. One purchase grants x1 ammo. A single use creates about 1 major effect(s). Raises shield up to 100 next round. Debug tags: Shield top-up.",
+    "shopCategory": "utility",
+    "category": "utility"
   }
 ]

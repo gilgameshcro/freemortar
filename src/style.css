@@ -3914,3 +3914,37 @@ canvas {
     align-items: center;
     gap: 10px;
 }
+
+.shop-tabs {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, auto));
+    justify-content: end;
+    gap: 6px;
+}
+
+.tidy-weapon-list,
+.tidy-store-list {
+    max-height: min(68vh, 620px);
+    gap: 8px;
+}
+
+.tidy-weapon-chip,
+.tidy-store-item {
+    padding: 10px 12px;
+    min-height: 44px;
+}
+
+.weapon-name {
+    font-size: 0.82rem;
+    line-height: 1.14;
+}
+
+.shop-row-value {
+    font-size: 0.76rem;
+}
+
+@media (max-width: 1180px) {
+    .shop-tabs {
+        justify-content: start;
+    }
+}

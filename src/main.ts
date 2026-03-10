@@ -7,7 +7,7 @@ import {
     createDebugWeapons,
     createWeaponsForLoadout,
     getWeaponBundleCount,
-    getWeaponCategory,
+    getWeaponShopCategory,
     getWeaponEffectCount,
     getWeaponSellPrice,
     getWeaponShopPrice,
@@ -23,6 +23,7 @@ import {
 } from './config';
 import { Game, type HudSnapshot, type RoundSummary } from './Game';
 import { Network } from './Network';
+import type { WeaponShopCategory } from './config';
 import type {
     BotDifficulty,
     GameMessage,
@@ -45,11 +46,39 @@ type LobbyMode = 'idle' | 'online-host' | 'online-client' | 'local';
 type IntermissionStage = 'hidden' | 'victory' | 'stats' | 'ceremony' | 'campaign' | 'shop';
 type LocalProfile = { name: string; color: string; loadout: LoadoutId };
 type ShopSelection = { playerId: string; weaponType: WeaponType; source: 'market' | 'stock' };
-type ShopCategoryFilter = 'all' | 'attack' | 'utility' | 'defense' | 'hybrid';
+type ActiveShopCategory = Exclude<WeaponShopCategory, 'retired'>;
+type ShopCategoryFilter = 'all' | ActiveShopCategory;
 
 type SetupLaunchMode = 'online-host' | 'local';
 
-const SHOP_WEAPON_ORDER: WeaponType[] = WEAPON_DISPLAY_ORDER;
+const SHOP_CATEGORY_ORDER: ActiveShopCategory[] = ['basic-attack', 'anti-shield-attack', 'control-attack', 'homing-attack', 'mass-attack', 'utility'];
+const SHOP_CATEGORY_LABELS: Record<WeaponShopCategory, string> = {
+    'basic-attack': 'Core Attack',
+    'anti-shield-attack': 'EMP Attack',
+    'control-attack': 'Control',
+    'homing-attack': 'Homing',
+    'mass-attack': 'Swarm',
+    utility: 'Utility',
+    retired: 'Retired'
+};
+const SHOP_TABS: Array<{ key: ShopCategoryFilter; label: string; title: string }> = [
+    { key: 'all', label: 'All', title: 'All available weapons' },
+    { key: 'basic-attack', label: 'Core', title: 'Core attack shells' },
+    { key: 'anti-shield-attack', label: 'EMP', title: 'Anti-shield attacks' },
+    { key: 'control-attack', label: 'Ctrl', title: 'Terrain and control attacks' },
+    { key: 'homing-attack', label: 'Seek', title: 'Homing and pursuit weapons' },
+    { key: 'mass-attack', label: 'Swarm', title: 'Mass payload weapons' },
+    { key: 'utility', label: 'Util', title: 'Utility gear' }
+];
+const SHOP_WEAPON_ORDER: WeaponType[] = [...WEAPON_DISPLAY_ORDER]
+    .filter((type) => getWeaponShopCategory(type) !== 'retired')
+    .sort((left, right) => {
+        const leftCategory = getWeaponShopCategory(left);
+        const rightCategory = getWeaponShopCategory(right);
+        const categoryDelta = SHOP_CATEGORY_ORDER.indexOf(leftCategory as ActiveShopCategory) - SHOP_CATEGORY_ORDER.indexOf(rightCategory as ActiveShopCategory);
+        if (categoryDelta !== 0) return categoryDelta;
+        return WEAPON_DISPLAY_ORDER.indexOf(left) - WEAPON_DISPLAY_ORDER.indexOf(right);
+    });
 const TERRAIN_OPTIONS: Array<{ value: TerrainTheme; name: string }> = [
     { value: 'rolling', name: 'Rolling' },
     { value: 'flats', name: 'Flats' },
@@ -516,7 +545,7 @@ let botShopTimer: number | null = null;
 let activeBoardTab: 'battle' | 'campaign' = 'battle';
 let latestHudSnapshot: HudSnapshot | null = null;
 let weaponSelectFocused = false;
-let currentHintLabel = 'Arrow left and right aim, arrow up and down change power, hold Ctrl for fine adjustment, and space fires.';
+let currentHintLabel = 'Arrow left and right aim, arrow up and down change power, hold Ctrl, Shift, Alt, or Cmd for fine adjustment, and space fires.';
 let localShopCursor = 0;
 let shopSelection: ShopSelection | null = null;
 let shopCategoryFilter: ShopCategoryFilter = 'all';
@@ -1544,7 +1573,7 @@ function getFilteredMarketTypes() {
     return SHOP_WEAPON_ORDER.filter((type) => {
         const price = getWeaponShopPrice(type, currentSettings.weaponCostMultiplier);
         if (price === null) return false;
-        return shopCategoryFilter === 'all' || getWeaponCategory(type) === shopCategoryFilter;
+        return shopCategoryFilter === 'all' || getWeaponShopCategory(type) === shopCategoryFilter;
     });
 }
 
@@ -1624,9 +1653,9 @@ function handleShopKeydown(event: KeyboardEvent) {
 }
 
 function getBotShopRole(type: WeaponType) {
-    const category = getWeaponCategory(type);
-    if (category === 'hybrid') return Math.random() > 0.5 ? 'attack' : 'utility';
-    return category;
+    if (type === 'shield_small' || type === 'shield_medium' || type === 'shield_large') return 'defense';
+    const category = getWeaponShopCategory(type);
+    return category === 'utility' ? 'utility' : 'attack';
 }
 
 function queueBotShopTurnIfNeeded(_player: CampaignPlayer | null) {
@@ -1992,16 +2021,9 @@ function renderShopScreen() {
     const effectCount = selectedType ? getWeaponEffectCount(selectedType) : 1;
     const bundleCount = selectedType ? getWeaponBundleCount(selectedType) : 1;
     const featureTags = selectedType ? getWeaponFeatureTags(selectedType) : [];
-    const categoryLabel = selectedType ? getWeaponCategory(selectedType).replace(/^./, (value) => value.toUpperCase()) : '';
+    const categoryLabel = selectedType ? SHOP_CATEGORY_LABELS[getWeaponShopCategory(selectedType)] : '';
     const canBuy = Boolean(focusPlayer && selection?.source === 'market' && !focusPlayer.shopReady && buyPrice !== null && focusPlayer.credits >= buyPrice);
     const canSell = Boolean(focusPlayer && selection?.source === 'stock' && !focusPlayer.shopReady && sellPrice !== null && ownedAmmo > 0);
-    const tabs: Array<{ key: ShopCategoryFilter; label: string }> = [
-        { key: 'all', label: 'All' },
-        { key: 'attack', label: 'Attack' },
-        { key: 'utility', label: 'Utility' },
-        { key: 'defense', label: 'Defense' },
-        { key: 'hybrid', label: 'Hybrid' }
-    ];
 
     intermissionScreen.innerHTML = `
         <div class="intermission-card shop-card deluxe-shop-card tidy-shop-card">
@@ -2041,7 +2063,7 @@ function renderShopScreen() {
                                         <span>${focusPlayer.shopReady ? 'Locked' : 'Bundle-aware pricing'}</span>
                                     </div>
                                     <div class="shop-tabs" role="tablist" aria-label="Weapon category filter">
-                                        ${tabs.map((tab) => `<button class="shop-tab ${shopCategoryFilter === tab.key ? 'active' : ''}" data-action="set-shop-filter" data-filter="${tab.key}" ${focusPlayer.shopReady ? 'disabled' : ''}>${tab.label}</button>`).join('')}
+                                        ${SHOP_TABS.map((tab) => `<button class="shop-tab ${shopCategoryFilter === tab.key ? 'active' : ''}" data-action="set-shop-filter" data-filter="${tab.key}" title="${tab.title}" ${focusPlayer.shopReady ? 'disabled' : ''}>${tab.label}</button>`).join('')}
                                     </div>
                                 </div>
                                 <div class="store-list tidy-store-list">
@@ -2519,7 +2541,7 @@ function resetHud() {
     hudWindArrow.textContent = '0';
     hudWindFill.style.width = '0%';
     hudCampaign.textContent = 'Round status';
-    currentHintLabel = 'Arrow left and right aim, arrow up and down change power, hold Ctrl for fine adjustment, and space fires.';
+    currentHintLabel = 'Arrow left and right aim, arrow up and down change power, hold Ctrl, Shift, Alt, or Cmd for fine adjustment, and space fires.';
     weaponSelect.innerHTML = '<option>Weapon</option>';
     weaponSelect.disabled = true;
     activeBoardTab = 'battle';
@@ -2597,6 +2619,9 @@ function escapeHtml(value: string) {
 function escapeAttribute(value: string) {
     return escapeHtml(value);
 }
+
+
+
 
 
 
